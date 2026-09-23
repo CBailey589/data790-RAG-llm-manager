@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -5,7 +6,7 @@ from openai import OpenAI
 
 
 @dataclass
-class LLMResponse:
+class BasicLLMResponse:
     success: bool
     response: Any
 
@@ -14,13 +15,13 @@ class LlmClient:
 	Tracks API calls to the configured LLM.
 	'''
 	def __init__(
-		self,
-		llm_base_url: str,
-		llm_api_key: str
+		self
 	):
 		'''
 		Creates an instance of the LlmClient class.
 		'''
+		llm_base_url = os.getenv("LLM_BASE_URL")
+		llm_api_key = os.getenv("LLM_API_KEY")
 		self.client = OpenAI(base_url = llm_base_url, api_key = llm_api_key)
 
 	def call(
@@ -36,7 +37,7 @@ class LlmClient:
 		- model: The desired model (ex: "gpt-4.1-mini"). Defaults to .env configured model if no model is provided.
 		- kwargs: model specific inputs
 
-		RETURNS:
+		RETURNS BasicLLMResponse class:
 		- Success bool
 		- LLM response object / returned error if unsuccessful
 		'''
@@ -44,14 +45,16 @@ class LlmClient:
 		model = model or self.default_model
 
 		try:
+			# TODO: ADD SECURITY CLASS CHECK HERE!!!
+
 			response = self.client.chat.completions.create(
 				model=model,
 				messages=messages,
 				**kwargs
 			)
 
-			return LLMResponse(success=True, response=response)
+			return BasicLLMResponse(success=True, response=response)
 
 		except Exception as e:
 
-			return LLMResponse(success=False, response=e)
+			return BasicLLMResponse(success=False, response=e)
