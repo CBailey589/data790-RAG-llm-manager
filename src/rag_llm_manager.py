@@ -3,8 +3,9 @@ from typing import Callable
 
 from dotenv import load_dotenv
 
-from .llm_client import LlmClient
-from .rag_document_processor import RagDocumentProcessor
+from .llm_client import LLMClient
+from .rag_document_processor import RAGDocumentProcessor
+from .rag_llm_client import RAGLLMClient
 
 
 class RagLlmManager:
@@ -18,7 +19,7 @@ class RagLlmManager:
 	def __init__(
 		self,
 		model: str = None,
-		embedding_model: str = None
+		embeddings_model: str = None
 	):
 		'''
 		Initializes RAG LLM Manager and required classes.
@@ -36,47 +37,60 @@ class RagLlmManager:
 
 		self.llm_base_url = llm_base_url
 		self.llm_api_key = llm_api_key
-		self.default_model = default_model
-		self.default_embedding_model = default_embeddings_model
+		self.model = model or default_model
+		self.default_embeddings_model = default_embeddings_model
 
-		self.llm_client = LlmClient()
+		self.llm_client = LLMClient()
 
-		embedding_model = embedding_model or self.default_embedding_model
-		self.rag_document_processor = RagDocumentProcessor(embedding_model)
+		embeddings_model = embeddings_model or self.default_embeddings_model
+		self.rag_document_processor = RAGDocumentProcessor(embeddings_model)
+		self.rag_llm_client = RAGLLMClient(embedding_model=embeddings_model, model=self.model)
 
-	def basic_llm_call(
-		self,
-		messages: list,
-		model: str = None,
-		**kwargs
-	):
-		model = model or self.default_model
+	def set_llm_model(self, model: str, **kwargs):
+		'''
+		Allows the user to change the LLM model (ex: 'gpt-4.1-mini', 'gpt-5.6-sol')
+		'''
+		self.model = model
+		self.rag_llm_client.update_llm_model(model=self.model, **kwargs)
+		print(f"UPDATED LLM MODEL TO: {model}")
 
-		response = self.llm_client.call(messages=messages, model=model, **kwargs)
+	def basic_llm_call(self, messages: list, **kwargs):
+		'''
+		Allows the user to conduct a basic LLM call.
+		Returns a BasicLLMResponse object consisting of:
+		- success: boolean
+		- response: response object from the API
+		'''
+		response = self.llm_client.call(messages=messages, model=self.model, **kwargs)
+		return response
 
-		if response.success:
-			print(f"successful call {response.response}")
-		else:
-			print(f"failed call {response.response}")
+	def rag_llm_call(self, query: str, k: int = 3, **kwargs):
+		'''
+		Allows the user to conduct a RAG assisted LLM call.
+		Returns a RAGLLMResponse object consisting of:
+		- success: boolean
+		- response: response object from the API
+		'''
+		response = self.rag_llm_client.call(query=query, k=k, **kwargs)
+		return response
 
-	def process_new_documents(
-		self,
-		loader_kwargs: dict = {},
+	def process_new_documents(self,
+		loader_kwargs: dict = None,
 		splitter_chunk_size: int = None,
 		splitter_chunk_overlap: int = None,
 		splitter_chunk_len_function: Callable = None,
 		separators: list = None,
-		splitter_kwargs: dict = {}
+		splitter_kwargs: dict = None
 	):
+		'''
+		Allows the user to trigger processing of new .PDF documents for RAG assisted LLM calls.
+		'''
+
 		self.rag_document_processor.process_new_documents(
-			loader_kwargs=loader_kwargs,
+			loader_kwargs=loader_kwargs or {},
 			splitter_chunk_size=splitter_chunk_size,
 			splitter_chunk_overlap=splitter_chunk_overlap,
 			splitter_chunk_len_function=splitter_chunk_len_function,
 			separators=separators,
-			splitter_kwargs=splitter_kwargs
+			splitter_kwargs=splitter_kwargs or {}
 		)
-
-
-
-

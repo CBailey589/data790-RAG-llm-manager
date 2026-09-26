@@ -9,7 +9,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_openai import OpenAIEmbeddings
 
 
-class RagDocumentProcessor:
+class RAGDocumentProcessor:
 	'''
 	Class for handling raw input documents to prep them for RAG LLM calls. This class:
 	- Reads in unprocessed documents using PyPDFLoader
@@ -30,7 +30,7 @@ class RagDocumentProcessor:
 
 		llm_base_url = os.getenv("LLM_BASE_URL")
 		llm_api_key = os.getenv("LLM_API_KEY")
-		self.vectorstore = OpenAIEmbeddings(
+		self.embeddings = OpenAIEmbeddings(
 			model=embedding_model,
 			base_url=llm_base_url,
 			api_key=llm_api_key,
@@ -38,19 +38,24 @@ class RagDocumentProcessor:
 
 		self.chroma = Chroma(
             persist_directory=self.persistent_vectors_dir,
-            embedding_function=self.vectorstore,
+            embedding_function=self.embeddings,
         )
 
 
 	def process_new_documents(
 		self,
-		loader_kwargs: dict,
-		splitter_chunk_size: int,
-		splitter_chunk_overlap: int,
-		splitter_chunk_len_function: Callable,
-		separators: list,
-		splitter_kwargs: dict
+		loader_kwargs: dict = None,
+		splitter_chunk_size: int = None,
+		splitter_chunk_overlap: int = None,
+		splitter_chunk_len_function: Callable = len,
+		separators: list = None,
+		splitter_kwargs: dict = None
 	):
+		'''
+		Takes unprocessed documents, splits and vectorizes them, and uploads vectors to the local vectorstore.
+		'''
+		loader_kwargs = loader_kwargs or {}
+		splitter_kwargs = splitter_kwargs or {}
 
 		for document_path in Path(self.unprocessed_docs_path).iterdir():
 			if not document_path.is_file():
@@ -67,7 +72,6 @@ class RagDocumentProcessor:
 			# Chunk PDF
 			chunk_size = splitter_chunk_size or 1000
 			chunk_overlap = splitter_chunk_overlap or 100
-			splitter_chunk_len_function = splitter_chunk_len_function or len
 			separators = separators or ["\n\n", "\n", ". ", " ", ""]
 			doc_splitter = RecursiveCharacterTextSplitter(
 				chunk_size=chunk_size,
