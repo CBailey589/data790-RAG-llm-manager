@@ -4,6 +4,8 @@ from typing import Any
 
 from openai import OpenAI
 
+from .llm_prompt_validator import LLMPromptValidator
+
 
 @dataclass
 class BasicLLMResponse:
@@ -21,6 +23,7 @@ class LLMClient:
 		llm_base_url = os.getenv("LLM_BASE_URL")
 		llm_api_key = os.getenv("LLM_API_KEY")
 		self.client = OpenAI(base_url = llm_base_url, api_key = llm_api_key)
+		self.prompt_validator = LLMPromptValidator()
 
 	def call(self, messages: list, model: str, **kwargs) -> BasicLLMResponse:
 		'''
@@ -35,7 +38,11 @@ class LLMClient:
 		- LLM response object / returned error if unsuccessful
 		'''
 		try:
-			# TODO: ADD SECURITY CLASS CHECK HERE!!!
+			for message_obj in messages:
+				for key in message_obj:
+					valid, reason = self.prompt_validator.validate_prompt(message_obj[key])
+					if valid == False:
+						return BasicLLMResponse(success=False, response=reason)
 
 			response = self.client.chat.completions.create(model=model, messages=messages, **kwargs)
 			return BasicLLMResponse(success=True, response=response)

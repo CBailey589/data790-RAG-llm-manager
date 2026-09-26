@@ -6,6 +6,8 @@ from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import Chroma
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
+from .llm_prompt_validator import LLMPromptValidator
+
 
 @dataclass
 class RAGLLMResponse:
@@ -38,6 +40,7 @@ class RAGLLMClient:
             persist_directory=self.persistent_vectors_dir,
             embedding_function=self.embeddings,
         )
+		self.prompt_validator = LLMPromptValidator()
 
 	def update_llm_model(self, model, **kwargs):
 		'''
@@ -63,7 +66,9 @@ class RAGLLMClient:
 		'''
 
 		try:
-			# TODO: ADD SECURITY CLASS CHECK HERE!!!
+			valid, reason = self.prompt_validator.validate_prompt(query)
+			if valid == False:
+				return RAGLLMResponse(success=False, response=reason)
 
 			qa_chain = RetrievalQA.from_chain_type(
 				llm=self.client,
