@@ -11,7 +11,7 @@ from .rag_document_processor import RAGDocumentProcessor
 from .rag_llm_client import RAGLLMClient
 
 
-class RagLlmManager:
+class RAGLLMManager:
 	'''
 	Main Class for managing LLM API interaction. This class provides:
 	- A Basic LLM API client used to make one off calls to a configured model.
