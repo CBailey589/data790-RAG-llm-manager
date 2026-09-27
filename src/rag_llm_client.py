@@ -65,7 +65,7 @@ class RAGLLMClient:
 			**kwargs
 		)
 
-	def _evaluate_relevant_documents(self, query: str, retrieved_docs: str ) -> tuple(float, int, int):
+	def _evaluate_relevant_documents(self, query: str, retrieved_docs: str ) -> tuple[float, int, int]:
 		try:
 			evaluator_prompt = f'''
 			Evaluate how relevant the following retrieved documents are to the users question.
@@ -142,7 +142,7 @@ class RAGLLMClient:
 				call_end_time = time.time()
 				call_latency = (call_end_time - call_start_time) * 1000
 
-				return RAGLLMResponse(success=True, response=response, latency=call_latency)
+				return RAGLLMResponse(success=True, response=response, latency=call_latency, context_relevance=doc_relevance_score)
 
 		except Exception as e:
 			call_end_time = time.time()
