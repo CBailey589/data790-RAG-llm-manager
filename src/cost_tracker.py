@@ -116,17 +116,33 @@ class CostTracker:
 		if not self.records:
 			return {"error": "No records"}
 
-		df = pd.DataFrame([asdict(r) for r in self.records])
+		df = pd.DataFrame([
+			{
+				'timestamp': r.timestamp,
+				'model': r.model,
+				'prompt_tokens': r.prompt_tokens,
+				'completion_tokens': r.completion_tokens,
+				'total_tokens': r.total_tokens,
+				'cost_usd': r.cost_usd,
+				'latency_ms': r.latency_ms,
+				'success': r.success,
+				'cache_hit': r.cache_hit
+			}
+			for r in self.records
+		])
+
+		api_calls = df[df["cache_hit"] == False]
 
 		return {
 			"total_calls": len(self.records),
 			"successful_calls": df["success"].sum(),
-			"total_tokens": df["total_tokens"].sum(),
-			"total_cost_usd": df["cost_usd"].sum(),
-			"avg_latency_ms": df["latency_ms"].mean(),
-			"cache_hit_rate": df["cache_hit"].mean() if "cache_hit" in df else 0,
-			"cost_per_call": df["cost_usd"].mean(),
-			"by_model": df.groupby("model")["cost_usd"].sum().to_dict()
+			"total_tokens": api_calls["total_tokens"].sum(),
+			"total_cost_usd": api_calls["cost_usd"].sum(),
+			"cost_per_call": api_calls["cost_usd"].mean(),
+			"cost_by_model": api_calls.groupby("model")["cost_usd"].sum().to_dict(),
+			"avg_latency_ms": api_calls["latency_ms"].mean(),
+			"latency_by_model": api_calls.groupby("model")["latency_ms"].mean().to_dict(),
+			"cache_hit_rate": df["cache_hit"].mean() if "cache_hit" in df else 0
 		}
 
 	def get_dataframe_of_tracked_llm_calls(self) -> pd.DataFrame:
