@@ -19,7 +19,7 @@ class BudgetManager:
 
 		prev_budget = self.daily_budget
 		self.daily_budget = daily_budget
-		print(f"[$$$] DAILY BUDGET UPDATED FROM ${round(prev_budget,2)} -> ${round(daily_budget,2)}...")
+		print(f"[$$$] DAILY BUDGET UPDATED FROM ${round(prev_budget,4)} -> ${round(daily_budget,4)}...")
 		self.check_daily_budget_remaining()
 
 	def enable_budget_hard_cap(self):
@@ -41,9 +41,9 @@ class BudgetManager:
 		Checks a user's LLM API call expenditure against their configured daily budget.
 		'''
 		if self.daily_spend >= self.daily_budget:
-			print(f"[$$$] DAILY BUDGET EXCEEDED! Budget: ${round(self.daily_budget,2)}, Utilized ${round(self.daily_spend,2)}")
+			print(f"[$$$] DAILY BUDGET EXCEEDED! Budget: ${round(self.daily_budget,4)}, Utilized ${round(self.daily_spend,4)}")
 		else:
-			print(f"[$$$] ${round(self.daily_budget - self.daily_spend,2)} of daily budget remaining. Budget: ${round(self.daily_budget,2)}, Utilized ${round(self.daily_spend,2)}")
+			print(f"[$$$] ${round(self.daily_budget - self.daily_spend,4)} of daily budget remaining. Budget: ${round(self.daily_budget,4)}, Utilized ${round(self.daily_spend,4)}")
 
 		return self.allow_llm_api_call()
 
@@ -69,13 +69,13 @@ class BudgetManager:
 		# Alert user if 50%, 80%, or 100% of daily budget has been used
 		if self.previous_percentage < 1.0 and self.current_percentage >= 1.0:
 			print("!"*20)
-			print(f"[$$$] 100% of daily budget utilized. [Budget: ${self.daily_budget}, Utilized: ${self.daily_spend}]")
+			print(f"[$$$] 100% of daily budget utilized. [Budget: ${round(self.daily_budget,4)}, Utilized: ${round(self.daily_spend,4)}]")
 			print("!"*20)
 		elif self.previous_percentage < 0.8 and self.current_percentage >= 0.8:
 			print("!"*20)
-			print(f"[$$$] 80% of daily budget utilized. [Budget: ${self.daily_budget}, Utilized: ${self.daily_spend}]")
+			print(f"[$$$] 80% of daily budget utilized. [Budget: ${round(self.daily_budget,4)}, Utilized: ${round(self.daily_spend,4)}]")
 			print("!"*20)
 		elif self.previous_percentage < 0.5 and self.current_percentage >= 0.5:
 			print("!"*20)
-			print(f"[$$$] 50% of daily budget utilized. [Budget: ${self.daily_budget}, Utilized: ${self.daily_spend}]")
+			print(f"[$$$] 50% of daily budget utilized. [Budget: ${round(self.daily_budget,4)}, Utilized: ${round(self.daily_spend,4)}]")
 			print("!"*20)
