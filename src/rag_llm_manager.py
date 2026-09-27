@@ -208,7 +208,7 @@ class RagLlmManager:
 		loader_kwargs: dict = None,
 		splitter_chunk_size: int = None,
 		splitter_chunk_overlap: int = None,
-		splitter_chunk_len_function: Callable = None,
+		splitter_chunk_len_function: Callable = len,
 		separators: list = None,
 		splitter_kwargs: dict = None
 	):
