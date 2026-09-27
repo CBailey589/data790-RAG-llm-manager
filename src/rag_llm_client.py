@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain.chains import RetrievalQA
+from langchain_community.callbacks.manager import get_openai_callback
 from langchain_community.vectorstores import Chroma
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
@@ -77,7 +78,14 @@ class RAGLLMClient:
 				return_source_documents=True
 			)
 
-			response = qa_chain.invoke({"query": query})
+			with get_openai_callback() as cb:
+				response = qa_chain.invoke({"query": query})
+				response["usage"] = {
+					"prompt_tokens": cb.prompt_tokens,
+					"completion_tokens": cb.completion_tokens,
+					"total_tokens": cb.total_tokens
+				}
+
 			return RAGLLMResponse(success=True, response=response)
 
 		except Exception as e:
