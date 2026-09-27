@@ -15,12 +15,12 @@ class PromptCache:
 		self.hits = 0
 		self.misses = 0
 
-	def _hash_request(self, messages: list, model: str, temperature: float, call_type: str) -> str:
+	def _hash_request(self, request: Any, model: str, temperature: float, call_type: str) -> str:
 		'''
 		Create a hash key for a request.
 		'''
 		key_data = json.dumps({
-			"messages": messages,
+			"request": request,
 			"model": model,
 			"temperature": temperature,
 			"call_type": call_type
@@ -29,19 +29,19 @@ class PromptCache:
 
 	def update_cache_max_size(self, max_size: int):
 		'''
-		Updates the maximum number of LLM API responses that can be held in message cache.
+		Updates the maximum number of LLM API responses that can be held in response cache.
 		'''
 		if max_size <= 0:
 			raise ValueError("CACHE SIZE MUST BE GREATER THAN ZERO.")
 
 		self.max_size = max_size
 
-		# Remove excess messages if necessary
+		# Remove excess responses if necessary
 		while len(self.cache) > self.max_size:
 			oldest_key = next(iter(self.cache))
 			del self.cache[oldest_key]
 
-	def get_cached_response(self, messages: list, model: str, temperature: float, call_type: str) -> Any:
+	def get_cached_response(self, request: Any, model: str, temperature: float, call_type: str) -> Any:
 		'''
 		Get cached response if available. Only available for deterministic calls (temperature = 0)
 		'''
@@ -50,7 +50,7 @@ class PromptCache:
 			return None
 
 		# Check for exact match:
-		key = self._hash_request(messages=messages, model=model, temperature=temperature, call_type=call_type)
+		key = self._hash_request(request=request, model=model, temperature=temperature, call_type=call_type)
 		if key in self.cache:
 			self.hits += 1
 			return self.cache[key]['response']
@@ -59,16 +59,16 @@ class PromptCache:
 		self.misses += 1
 		return None
 
-	def set_cached_response(self, messages: list, model: str, temperature: float, call_type: str, response: Any):
+	def set_cached_response(self, request: Any, model: str, temperature: float, call_type: str, response: Any):
 		'''
 		Add an LLM API response to the cache. Only available for deterministic calls (temperature = 0)
 		'''
 		if temperature > 0:
 			return
 
-		key = self._hash_request(messages=messages, model=model, temperature=temperature, call_type=call_type)
+		key = self._hash_request(request=request, model=model, temperature=temperature, call_type=call_type)
 
-		# remove oldest message if cache is full
+		# remove oldest response if cache is full
 		if len(self.cache) >= self.max_size:
 			oldest_key = next(iter(self.cache))
 			del self.cache[oldest_key]
@@ -82,7 +82,7 @@ class PromptCache:
 
 	def get_cache_stats(self):
 		'''
-		Get cached message statistics.
+		Get cached response statistics.
 		'''
 
 		total_calls = self.hits + self.misses

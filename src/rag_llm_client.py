@@ -45,7 +45,7 @@ class RAGLLMClient:
 		)
 		self.prompt_validator = LLMPromptValidator()
 
-	def update_llm_model(self, model, **kwargs):
+	def update_llm_model(self, model, temperature=0, **kwargs):
 		'''
 		Updates the configured LLM model for API calls.
 		'''
@@ -53,7 +53,7 @@ class RAGLLMClient:
 			model=model,
 			base_url=self.llm_base_url,
 			api_key=self.llm_api_key,
-			temperature=0,
+			temperature=temperature,
 			**kwargs
 		)
 

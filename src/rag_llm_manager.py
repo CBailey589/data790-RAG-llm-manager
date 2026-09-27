@@ -6,16 +6,20 @@ from dotenv import load_dotenv
 from .budget_manager import BudgetManager
 from .cost_tracker import CostTracker
 from .llm_client import LLMClient
+from .prompt_cache import PromptCache
 from .rag_document_processor import RAGDocumentProcessor
 from .rag_llm_client import RAGLLMClient
 
 
 class RagLlmManager:
 	'''
-	Main Class for managing RAG-based LLM interaction. This class provides:
-	-
-	-
-	-
+	Main Class for managing LLM API interaction. This class provides:
+	- A Basic LLM API client used to make one off calls to a configured model.
+	- A RAG LLM API client used to make RAG assisted calls to a configured model.
+	- A Cost Tracker that tracks API calls of various types and calculated costs associated with them based on pricing information.
+	- A Budget Manager that allows users to set a maximum budget and track their spending against that budget.
+	- A Prompt Cache that will return deterministic results for identical LLM API queries, reducing LLM API costs.
+	- A Document Processor that allows users to upload documents and process them for RAG assisted LLM API calls.
 	'''
 
 	def __init__(
@@ -23,7 +27,8 @@ class RagLlmManager:
 		model: str = None,
 		embeddings_model: str = None,
 		daily_budget: float = 1.00,
-		enable_budget_hard_cap: bool = True
+		enable_budget_hard_cap: bool = True,
+		max_cache_size: int = 100
 	):
 		'''
 		Initializes RAG LLM Manager and required classes.
@@ -43,6 +48,7 @@ class RagLlmManager:
 		self.llm_api_key = llm_api_key
 		self.model = model or default_model
 		self.default_embeddings_model = default_embeddings_model
+		self.rag_temperature  = 0
 
 		self.llm_client = LLMClient()
 
@@ -56,6 +62,8 @@ class RagLlmManager:
 			raise ValueError("[$$$] DAILY BUDGET MUST BE GREATER THAN ZERO.")
 		self.budget_manager = BudgetManager(daily_budget=daily_budget, enable_budget_hard_cap=enable_budget_hard_cap)
 
+		self.prompt_cache = PromptCache(max_size=max_cache_size)
+
 	def set_llm_model(self, model: str, **kwargs):
 		'''
 		Allows the user to change the LLM model (ex: 'gpt-4.1-mini', 'gpt-5.6-sol')
@@ -63,7 +71,9 @@ class RagLlmManager:
 		# Send to Cost Tracker first so we can update Pricing DB if necessary, will raise error if pricing info is unknown
 		self.cost_tracker.update_model(model=model)
 		self.model = model
+		self.rag_temperature = kwargs.get('temperature', 0)
 		self.rag_llm_client.update_llm_model(model=self.model, **kwargs)
+
 		print(f"UPDATED LLM MODEL TO: {model}")
 
 	def insert_model_into_pricing_db(self, model_name: str, input_cost: int, output_cost: int, provider: str):
@@ -85,6 +95,16 @@ class RagLlmManager:
 		- success: boolean
 		- response: response object from the API
 		'''
+
+		# First check with prompt cache as returning cached responses is free:
+		temperature = kwargs.get('temperature', 0)
+		cached_response = self.prompt_cache.get_cached_response(request=messages, model=self.model, temperature=temperature, call_type='basic')
+
+		if cached_response is not None:
+			self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True)
+			return cached_response
+
+		# No cached response, attempt LLM call
 		# Check with budget manager for permission:
 		if self.budget_manager.allow_llm_api_call():
 			basic_llm_response = self.llm_client.call(messages=messages, model=self.model, **kwargs)
@@ -95,7 +115,34 @@ class RagLlmManager:
 				completion_tokens = basic_llm_response.response.usage.completion_tokens
 				total_tokens = basic_llm_response.response.usage.total_tokens
 				api_call_cost = self.cost_tracker.calculate_cost(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+
 				self.budget_manager.record_cost(cost=api_call_cost)
+				self.cost_tracker.record_call(
+					response=basic_llm_response,
+					latency_ms=basic_llm_response.latency,
+					prompt_tokens=prompt_tokens,
+					completion_tokens=completion_tokens,
+					total_tokens=total_tokens,
+					cache_hit=False
+				)
+				self.prompt_cache.set_cached_response(
+					request=messages,
+					model=self.model,
+					temperature=temperature,
+					call_type='basic',
+					response=basic_llm_response
+				)
+
+			else:
+				self.cost_tracker.record_call(
+					response=basic_llm_response,
+					latency_ms=basic_llm_response.latency,
+					prompt_tokens=0,
+					completion_tokens=0,
+					total_tokens=0,
+					cache_hit=False,
+					error=basic_llm_response.response
+				)
 
 			return basic_llm_response
 
@@ -106,6 +153,15 @@ class RagLlmManager:
 		- success: boolean
 		- response: response object from the API
 		'''
+
+		# First check with prompt cache as returning cached responses is free:
+		rag_request = {'query': query, 'k': k}
+		cached_response = self.prompt_cache.get_cached_response(request=rag_request, model=self.model, temperature=self.rag_temperature, call_type='rag')
+
+		if cached_response is not None:
+			self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True)
+			return cached_response
+
 		# Check with budget manager for permission:
 		if self.budget_manager.allow_llm_api_call():
 			rag_llm_response = self.rag_llm_client.call(query=query, k=k, **kwargs)
@@ -116,7 +172,35 @@ class RagLlmManager:
 				completion_tokens = rag_llm_response.response['usage']['completion_tokens']
 				total_tokens = rag_llm_response.response['usage']['total_tokens']
 				api_call_cost = self.cost_tracker.calculate_cost(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+
+
 				self.budget_manager.record_cost(cost=api_call_cost)
+				self.cost_tracker.record_call(
+					response=rag_llm_response,
+					latency_ms=rag_llm_response.latency,
+					prompt_tokens=prompt_tokens,
+					completion_tokens=completion_tokens,
+					total_tokens=total_tokens,
+					cache_hit=False
+				)
+				self.prompt_cache.set_cached_response(
+					request=rag_request,
+					model=self.model,
+					temperature=self.rag_temperature,
+					call_type='rag',
+					response=rag_llm_response
+				)
+
+			else:
+				self.cost_tracker.record_call(
+					response=rag_llm_response,
+					latency_ms=rag_llm_response.latency,
+					prompt_tokens=0,
+					completion_tokens=0,
+					total_tokens=0,
+					cache_hit=False,
+					error=rag_llm_response.response
+				)
 
 			return rag_llm_response
 
@@ -157,3 +241,9 @@ class RagLlmManager:
 		Allows a user to update their daily budget for LLM API calls.
 		'''
 		self.budget_manager.update_daily_budget(daily_budget=updated_budget_amount)
+
+	def update_cache_max_size(self, max_size: int):
+		'''
+		Updates the maximum number of LLM API responses that can be held in message cache.
+		'''
+		self.prompt_cache.update_cache_max_size(max_size=max_size)
