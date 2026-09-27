@@ -1,4 +1,5 @@
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,8 +13,9 @@ from .llm_prompt_validator import LLMPromptValidator
 
 @dataclass
 class RAGLLMResponse:
-    success: bool
-    response: Any
+	success: bool
+	response: Any
+	latency: float = 0
 
 class RAGLLMClient:
 	'''
@@ -38,9 +40,9 @@ class RAGLLMClient:
 			api_key=self.llm_api_key,
 		)
 		self.chroma = Chroma(
-            persist_directory=self.persistent_vectors_dir,
-            embedding_function=self.embeddings,
-        )
+			persist_directory=self.persistent_vectors_dir,
+			embedding_function=self.embeddings,
+		)
 		self.prompt_validator = LLMPromptValidator()
 
 	def update_llm_model(self, model, **kwargs):
@@ -66,10 +68,12 @@ class RAGLLMClient:
 		- RAG assisted LLM response object / returned error if unsuccessful
 		'''
 
+		valid, reason = self.prompt_validator.validate_prompt(query)
+		if valid == False:
+			return RAGLLMResponse(success=False, response=reason)
+
+		call_start_time = time.time()
 		try:
-			valid, reason = self.prompt_validator.validate_prompt(query)
-			if valid == False:
-				return RAGLLMResponse(success=False, response=reason)
 
 			qa_chain = RetrievalQA.from_chain_type(
 				llm=self.client,
@@ -86,7 +90,12 @@ class RAGLLMClient:
 					"total_tokens": cb.total_tokens
 				}
 
-			return RAGLLMResponse(success=True, response=response)
+			call_end_time = time.time()
+			call_latency = (call_end_time - call_start_time) * 1000
+
+			return RAGLLMResponse(success=True, response=response, latency=call_latency)
 
 		except Exception as e:
-			return RAGLLMResponse(success=False, response=e)
+			call_end_time = time.time()
+			call_latency = (call_end_time - call_start_time) * 1000
+			return RAGLLMResponse(success=False, response=e, latency=call_latency)

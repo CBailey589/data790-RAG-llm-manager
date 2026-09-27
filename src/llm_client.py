@@ -1,4 +1,5 @@
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,8 +10,9 @@ from .llm_prompt_validator import LLMPromptValidator
 
 @dataclass
 class BasicLLMResponse:
-    success: bool
-    response: Any
+	success: bool
+	response: Any
+	latency: float = 0
 
 class LLMClient:
 	'''
@@ -37,15 +39,22 @@ class LLMClient:
 		- Success bool
 		- LLM response object / returned error if unsuccessful
 		'''
+		for message_obj in messages:
+			for key in message_obj:
+				valid, reason = self.prompt_validator.validate_prompt(message_obj[key])
+				if valid == False:
+					return BasicLLMResponse(success=False, response=reason)
+
+		call_start_time = time.time()
 		try:
-			for message_obj in messages:
-				for key in message_obj:
-					valid, reason = self.prompt_validator.validate_prompt(message_obj[key])
-					if valid == False:
-						return BasicLLMResponse(success=False, response=reason)
 
 			response = self.client.chat.completions.create(model=model, messages=messages, **kwargs)
-			return BasicLLMResponse(success=True, response=response)
+			call_end_time = time.time()
+			call_latency = (call_end_time - call_start_time) * 1000
+
+			return BasicLLMResponse(success=True, response=response, latency=call_latency)
 
 		except Exception as e:
-			return BasicLLMResponse(success=False, response=e)
+			call_end_time = time.time()
+			call_latency = (call_end_time - call_start_time) * 1000
+			return BasicLLMResponse(success=False, response=e, latency=call_latency)
