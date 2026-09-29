@@ -95,3 +95,24 @@ class RAGDocumentProcessor:
 			print(f"Finished processing {document_path}")
 
 		print(f"Processing of new documents is complete. Total collection count: {self.chroma._collection.count()} vectors")
+
+def reset_vectorstore_and_reprocess_documents(self, **kwargs):
+	'''
+	Clears the current Chroma collection, moves processed documents back to the unprocessed directory, and reprocesses them using
+	the supplied processing settings.
+	'''
+	self.chroma.delete_collection()
+
+	for document_path in Path(self.processed_docs_path).iterdir():
+		if not document_path.is_file():
+			continue
+
+		destination_path = Path(self.unprocessed_docs_path) / document_path.name
+		shutil.move(str(document_path), str(destination_path))
+
+	self.chroma = Chroma(
+		persist_directory=self.persistent_vectors_dir,
+		embedding_function=self.embeddings,
+	)
+
+	self.process_new_documents(**kwargs)
