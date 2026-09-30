@@ -1,6 +1,7 @@
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from langchain.chains import RetrievalQA
@@ -96,7 +97,7 @@ class RAGLLMClient:
 		except Exception as e:
 			return 0.0, 0, 0
 
-	def call(self, query: str, k: int) -> RAGLLMResponse:
+	def call(self, query: str, k: int, verbose: bool = False) -> RAGLLMResponse:
 		'''
 		Performs a RAG assisted call to the LLM endpoint configured in .env using the currently configured model.
 		INPUTS:
@@ -115,8 +116,8 @@ class RAGLLMClient:
 
 		try:
 			# Get documents to evaluate their relevance:
-			document_retriever = self.chroma.as_retriever(search_kwargs={"k": k})
-			relevant_docs = document_retriever.invoke(query)
+			relevant_docs_with_scores = self.chroma.similarity_search_with_score(query, k=k)
+			relevant_docs = [doc for doc, score in relevant_docs_with_scores]
 			retrieved_docs_str = '\n'.join(doc.page_content for doc in relevant_docs)
 
 			doc_relevance_score, evaluator_prompt_tokens, evaluator_completion_tokens = self._evaluate_relevant_documents(query=query, retrieved_docs=retrieved_docs_str)
@@ -141,6 +142,28 @@ class RAGLLMClient:
 
 				call_end_time = time.time()
 				call_latency = (call_end_time - call_start_time) * 1000
+
+				if verbose:
+					print("\n" + "=" * 60)
+					print("RAG RESPONSE")
+					print("=" * 60)
+					print(response["result"])
+
+					print("\n" + "=" * 60)
+					print(f"CONTEXT RELEVANCE: {doc_relevance_score:.2f}")
+					print("=" * 60)
+
+					print("\nSUPPORTING SOURCES:")
+					for doc, score in relevant_docs_with_scores:
+						source = Path(doc.metadata.get("source", "")).name
+						page = doc.metadata.get("page")
+						preview = " ".join(doc.page_content.split())[:100]
+
+						print(f"~{source} — Page {page} — Score: {score:.4f}")
+						print(f"    \"{preview}...\"")
+						print("\n")
+
+					print("=" * 60 + "\n")
 
 				return RAGLLMResponse(success=True, response=response, latency=call_latency, context_relevance=doc_relevance_score)
 

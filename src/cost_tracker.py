@@ -21,6 +21,7 @@ class APICallRecord:
 	response: Any
 	error: Optional[str] = None
 	cache_hit: bool = False
+	call_type: str = "llm"
 
 
 class CostTracker:
@@ -67,7 +68,8 @@ class CostTracker:
 		completion_tokens: int,
 		total_tokens: int,
 		cache_hit: bool = False,
-		error: str = None
+		error: str = None,
+		call_type: str = "llm"
 	):
 		'''
 		Record an API call.
@@ -84,7 +86,8 @@ class CostTracker:
 				success=False,
 				error=error,
 				cache_hit=cache_hit,
-				response=response
+				response=response,
+				call_type=call_type
 			)
 		else:
 			# Zero cost of cached_responses:
@@ -103,7 +106,8 @@ class CostTracker:
 				latency_ms=latency_ms,
 				success=True,
 				cache_hit=cache_hit,
-				response=response
+				response=response,
+				call_type=call_type,
 			)
 
 		self.records.append(record)
@@ -171,5 +175,51 @@ class CostTracker:
 		print(f"Cache hit rate: {s['cache_hit_rate']:.1%}")
 		print(f"Average cost per call: ${s['cost_per_call']:.6f}")
 		print("\nCost by model:")
-		for model, cost in s['by_model'].items():
+		for model, cost in s['cost_by_model'].items():
 			print(f"  {model}: ${cost:.6f}")
+
+	def project_rag_costs(self):
+		'''
+		Project RAG API costs at different daily request volumes.
+		Uses only successful, uncached RAG calls for the currently configured model.
+		'''
+		df = self.get_dataframe_of_tracked_llm_calls()
+
+		rag_calls = df[
+			(df["model"] == self.model) &
+			(df["call_type"] == "rag") &
+			(df["success"]) &
+			(~df["cache_hit"])
+		]
+
+		if rag_calls.empty:
+			print(f"No uncached RAG calls recorded for model: {self.model}")
+			return
+
+		average_cost = rag_calls["cost_usd"].mean()
+
+		print("\n" + "=" * 70)
+		print("PROJECTED RAG COSTS")
+		print("=" * 70)
+		print(f"Model: {self.model}")
+		print(f"Average RAG cost per call: ${average_cost:.6f}")
+		print(f"Based on: {len(rag_calls)} recorded RAG calls")
+
+		print("\nDaily Calls     Per Day     Per Week     Per Month     Per Year")
+		print("-" * 70)
+
+		for daily_calls in [1_000, 10_000, 100_000]:
+			daily_cost = daily_calls * average_cost
+			weekly_cost = daily_cost * 7
+			monthly_cost = daily_cost * 30
+			yearly_cost = daily_cost * 365
+
+			print(
+				f"{daily_calls:>11,}"
+				f"   ${daily_cost:>8.2f}"
+				f"   ${weekly_cost:>9.2f}"
+				f"   ${monthly_cost:>10.2f}"
+				f"   ${yearly_cost:>10.2f}"
+			)
+
+		print("=" * 70)

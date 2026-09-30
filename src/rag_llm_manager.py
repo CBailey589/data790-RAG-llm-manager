@@ -101,7 +101,7 @@ class RAGLLMManager:
 		cached_response = self.prompt_cache.get_cached_response(request=messages, model=self.model, temperature=temperature, call_type='basic')
 
 		if cached_response is not None:
-			self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True)
+			self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True, call_type='cache')
 			return cached_response
 
 		# No cached response, attempt LLM call
@@ -123,7 +123,8 @@ class RAGLLMManager:
 					prompt_tokens=prompt_tokens,
 					completion_tokens=completion_tokens,
 					total_tokens=total_tokens,
-					cache_hit=False
+					cache_hit=False,
+					call_type='basic'
 				)
 				self.prompt_cache.set_cached_response(
 					request=messages,
@@ -141,12 +142,13 @@ class RAGLLMManager:
 					completion_tokens=0,
 					total_tokens=0,
 					cache_hit=False,
-					error=basic_llm_response.response
+					error=basic_llm_response.response,
+					call_type='basic'
 				)
 
 			return basic_llm_response
 
-	def rag_llm_call(self, query: str, k: int = 3, **kwargs):
+	def rag_llm_call(self, query: str, k: int = 3, verbose: bool = False, **kwargs):
 		'''
 		Allows the user to conduct a RAG assisted LLM call.
 		Returns a RAGLLMResponse object consisting of:
@@ -159,12 +161,12 @@ class RAGLLMManager:
 		cached_response = self.prompt_cache.get_cached_response(request=rag_request, model=self.model, temperature=self.rag_temperature, call_type='rag')
 
 		if cached_response is not None:
-			self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True)
+			self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True, call_type='cache')
 			return cached_response
 
 		# Check with budget manager for permission:
 		if self.budget_manager.allow_llm_api_call():
-			rag_llm_response = self.rag_llm_client.call(query=query, k=k, **kwargs)
+			rag_llm_response = self.rag_llm_client.call(query=query, k=k, verbose=verbose, **kwargs)
 
 			if rag_llm_response.success:
 				# calculate cost / update budget info:
@@ -181,7 +183,8 @@ class RAGLLMManager:
 					prompt_tokens=prompt_tokens,
 					completion_tokens=completion_tokens,
 					total_tokens=total_tokens,
-					cache_hit=False
+					cache_hit=False,
+					call_type='rag'
 				)
 				self.prompt_cache.set_cached_response(
 					request=rag_request,
@@ -199,7 +202,8 @@ class RAGLLMManager:
 					completion_tokens=0,
 					total_tokens=0,
 					cache_hit=False,
-					error=rag_llm_response.response
+					error=rag_llm_response.response,
+					call_type='rag'
 				)
 
 			return rag_llm_response
