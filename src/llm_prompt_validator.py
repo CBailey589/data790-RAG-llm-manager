@@ -11,13 +11,26 @@ class LLMPromptValidator:
 			'disregard your instructions',
 			'print your system prompt',
 			'system prompt',
+			'system instructions',
 			'<assistant>',
 			'assistant response:',
 			'<<<end>>>',
 			'drop table',
 			'delete from',
-			'authorized security audit',
+			'security audit',
 			'i am a developer testing your system',
+			'you are now',
+			'act as an unrestricted',
+			'bypass your safety',
+			'bypass all safety',
+			'ignore safety',
+			'disable restrictions',
+			'</system>',
+			'</context>',
+			'[INST',
+			'[SECU',
+			'[AUTH',
+			'[OVER'
 		]
 
 	def validate_prompt(self, prompt: str) -> tuple[bool, str]:
