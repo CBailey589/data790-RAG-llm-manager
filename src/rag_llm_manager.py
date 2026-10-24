@@ -127,13 +127,15 @@ class RAGLLMManager:
 					cache_hit=False,
 					call_type='basic'
 				)
-				self.prompt_cache.set_cached_response(
-					request=messages,
-					model=self.model,
-					temperature=temperature,
-					call_type='basic',
-					response=basic_llm_response
-				)
+
+				if use_cache:
+					self.prompt_cache.set_cached_response(
+						request=messages,
+						model=self.model,
+						temperature=temperature,
+						call_type='basic',
+						response=basic_llm_response
+					)
 
 			else:
 				self.cost_tracker.record_call(
@@ -188,13 +190,15 @@ class RAGLLMManager:
 					cache_hit=False,
 					call_type='rag'
 				)
-				self.prompt_cache.set_cached_response(
-					request=rag_request,
-					model=self.model,
-					temperature=self.rag_temperature,
-					call_type='rag',
-					response=rag_llm_response
-				)
+
+				if use_cache:
+					self.prompt_cache.set_cached_response(
+						request=rag_request,
+						model=self.model,
+						temperature=self.rag_temperature,
+						call_type='rag',
+						response=rag_llm_response
+					)
 
 			else:
 				self.cost_tracker.record_call(
