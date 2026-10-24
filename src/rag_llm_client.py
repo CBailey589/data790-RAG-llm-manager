@@ -7,6 +7,7 @@ from langchain_chroma import Chroma
 from langchain_community.callbacks.manager import get_openai_callback
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from pydantic import BaseModel, Field
 
 from .llm_prompt_validator import LLMPromptValidator
 
@@ -17,6 +18,24 @@ class RAGLLMResponse:
 	response: Any
 	latency: float = 0
 	context_relevance: float = 0
+
+class PIIRedaction(BaseModel):
+    '''
+	An llm proposed redaction of PII from the supporting documentation.
+	'''
+
+    text: str = Field(description = "Exact text to redact from the retrieved documents")
+    replacement: str = Field(description = "Replacement text, such as [name], [city, state], [telephone number], [ssn]")
+    type: str = Field(description = "Type of personal information, such as person_name or location")
+
+class RAGStructuredResponse(BaseModel):
+    '''
+	A response structure for RAG assisted LLM calls.
+	This allows us to postprocess documentation to make sure PII is redacted before being sent to the user.
+	'''
+
+    answer: str = Field(description="Answer to the user's Nintendo Power related question")
+    pii_redactions: list[PIIRedaction] = Field(description="Proposed redactions for PII found in retrieved documents. Empty if none.")
 
 class RAGLLMClient:
 	'''
@@ -34,6 +53,9 @@ class RAGLLMClient:
 			base_url=self.llm_base_url,
 			api_key=self.llm_api_key,
 			temperature=0,
+		)
+		self.structured_client = self.client.with_structured_output(
+			RAGStructuredResponse
 		)
 		self.embeddings = OpenAIEmbeddings(
 			model=embedding_model,
@@ -97,6 +119,17 @@ class RAGLLMClient:
 		except Exception as e:
 			return 0.0, 0, 0
 
+	def _redact_pii(self, text: str, redactions: list) -> str:
+		'''
+		Takes the proposed redactions from the LLM and redacts PII from the response.
+		'''
+
+		for redaction in redactions:
+			if redaction.text and redaction.text in text:
+				text = text.replace(redaction.text, f"[{redaction.type}]")
+
+		return text
+
 	def call(
 			self,
 			query: str,
@@ -158,11 +191,15 @@ class RAGLLMClient:
 				)
 
 				with get_openai_callback() as cb:
-					llm_response = self.client.invoke(messages)
+					llm_response = self.structured_client.invoke(messages)
+					redacted_answer = self._redact_pii(llm_response.answer, llm_response.pii_redactions)
+
+					# print("ORIGINAL ANSWER:", llm_response.answer)
+					# print("REDACTIONS:", llm_response.pii_redactions)
+					# print("REDACTED ANSWER:", redacted_answer)
 
 					response = {
-						"result": llm_response.content,
-						"source_documents": relevant_docs,
+						"result": redacted_answer,
 						"usage": {
 							"prompt_tokens": cb.prompt_tokens + evaluator_prompt_tokens,
 							"completion_tokens": cb.completion_tokens + evaluator_completion_tokens,
