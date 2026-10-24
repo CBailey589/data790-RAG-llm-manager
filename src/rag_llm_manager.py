@@ -159,9 +159,10 @@ class RAGLLMManager:
 		- response: response object from the API
 		'''
 
+		rag_request = {'query': query, 'k': k}
+
 		if use_cache:
 			# First check with prompt cache as returning cached responses is free:
-			rag_request = {'query': query, 'k': k}
 			cached_response = self.prompt_cache.get_cached_response(request=rag_request, model=self.model, temperature=self.rag_temperature, call_type='rag')
 
 			if cached_response is not None:
