@@ -1,12 +1,11 @@
 import os
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
-from langchain.chains import RetrievalQA
+from langchain_chroma import Chroma
 from langchain_community.callbacks.manager import get_openai_callback
-from langchain_community.vectorstores import Chroma
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from .llm_prompt_validator import LLMPromptValidator
@@ -21,13 +20,13 @@ class RAGLLMResponse:
 
 class RAGLLMClient:
 	'''
-	MAKES RAG assisted API calls to the configured LLM.
+	Makes RAG assisted API calls to the configured LLM.
 	'''
 	def __init__(self, embedding_model: str, model: str):
 		'''
 		Creates an instance of the RAGLLMClient class.
 		'''
-		self.persistent_vectors_dir = "./chromadb"
+		self.persistent_vectors_dir = "./chroma_db_nintendo_power"
 		self.llm_base_url = os.getenv("LLM_BASE_URL")
 		self.llm_api_key = os.getenv("LLM_API_KEY")
 		self.client = ChatOpenAI(
@@ -42,6 +41,7 @@ class RAGLLMClient:
 			api_key=self.llm_api_key,
 		)
 		self.chroma = Chroma(
+			collection_name="nintendo_power_all_spreads",
 			persist_directory=self.persistent_vectors_dir,
 			embedding_function=self.embeddings,
 		)
@@ -97,7 +97,13 @@ class RAGLLMClient:
 		except Exception as e:
 			return 0.0, 0, 0
 
-	def call(self, query: str, k: int, verbose: bool = False) -> RAGLLMResponse:
+	def call(
+			self,
+			query: str,
+			k: int,
+			verbose: bool = False,
+			doc_relevance_check: bool = True,
+			system_prompt: str = "You are a helpful assistant.") -> RAGLLMResponse:
 		'''
 		Performs a RAG assisted call to the LLM endpoint configured in .env using the currently configured model.
 		INPUTS:
@@ -120,24 +126,50 @@ class RAGLLMClient:
 			relevant_docs = [doc for doc, score in relevant_docs_with_scores]
 			retrieved_docs_str = '\n'.join(doc.page_content for doc in relevant_docs)
 
-			doc_relevance_score, evaluator_prompt_tokens, evaluator_completion_tokens = self._evaluate_relevant_documents(query=query, retrieved_docs=retrieved_docs_str)
+			doc_relevance_score = 0.0
+			evaluator_prompt_tokens = 0
+			evaluator_completion_tokens = 0
 
-			if doc_relevance_score < self.context_relevance_threshold:
+			if doc_relevance_check:
+				doc_relevance_score, evaluator_prompt_tokens, evaluator_completion_tokens = self._evaluate_relevant_documents(query=query, retrieved_docs=retrieved_docs_str)
+
+			if doc_relevance_check and doc_relevance_score < self.context_relevance_threshold:
 				return RAGLLMResponse(success=False, response="Unable to retrieve relevant context for API call.", latency=0, context_relevance=doc_relevance_score)
 			else:
-				qa_chain = RetrievalQA.from_chain_type(
-					llm=self.client,
-					chain_type="stuff",
-					retriever=self.chroma.as_retriever(search_kwargs={"k": k}),
-					return_source_documents=True
+				context = "\n\n".join(
+					doc.page_content for doc in relevant_docs
+				)
+
+				prompt = ChatPromptTemplate.from_messages([
+					(
+						"system",
+						"""{system_prompt}
+
+						CONTEXT:
+						{context}"""
+					),
+					("human", "{question}")
+				])
+
+				messages = prompt.format_messages(
+					system_prompt=system_prompt,
+					context=context,
+					question=query
 				)
 
 				with get_openai_callback() as cb:
-					response = qa_chain.invoke({"query": query})
-					response["usage"] = {
-						"prompt_tokens": cb.prompt_tokens + evaluator_prompt_tokens,
-						"completion_tokens": cb.completion_tokens + evaluator_completion_tokens,
-						"total_tokens": cb.total_tokens + evaluator_prompt_tokens + evaluator_completion_tokens
+					llm_response = self.client.invoke(messages)
+
+					response = {
+						"result": llm_response.content,
+						"source_documents": relevant_docs,
+						"usage": {
+							"prompt_tokens": cb.prompt_tokens + evaluator_prompt_tokens,
+							"completion_tokens": cb.completion_tokens + evaluator_completion_tokens,
+							"total_tokens": cb.total_tokens
+								+ evaluator_prompt_tokens
+								+ evaluator_completion_tokens
+						}
 					}
 
 				call_end_time = time.time()
@@ -149,19 +181,27 @@ class RAGLLMClient:
 					print("=" * 60)
 					print(response["result"])
 
-					print("\n" + "=" * 60)
-					print(f"CONTEXT RELEVANCE: {doc_relevance_score:.2f}")
-					print("=" * 60)
+					if doc_relevance_check:
+						print("\n" + "=" * 60)
+						print(f"CONTEXT RELEVANCE: {doc_relevance_score:.2f}")
 
+					print("=" * 60)
 					print("\nSUPPORTING SOURCES:")
 					for doc, score in relevant_docs_with_scores:
-						source = Path(doc.metadata.get("source", "")).name
-						page = doc.metadata.get("page")
+						filename = doc.metadata.get("filename", "Unknown file")
+						issue = doc.metadata.get("issue_number", "Unknown issue")
+						start_page = doc.metadata.get("start_page", "?")
+						end_page = doc.metadata.get("end_page", "?")
+						spread_id = doc.metadata.get("id", "Unknown spread id")
 						preview = " ".join(doc.page_content.split())[:100]
 
-						print(f"~{source} — Page {page} — Score: {score:.4f}")
+						print(
+							f"{spread_id} — Issue {issue} — "
+							f"Pages {start_page}-{end_page} — Score: {score:.4f}"
+						)
+						print(f"    File: {filename}")
 						print(f"    \"{preview}...\"")
-						print("\n")
+						print()
 
 					print("=" * 60 + "\n")
 
