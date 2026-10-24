@@ -88,7 +88,7 @@ class RAGLLMManager:
 		'''
 		self.cost_tracker.insert_model_into_pricing_db(model_name=model_name, input_cost=input_cost, output_cost=output_cost, provider=provider)
 
-	def basic_llm_call(self, messages: list, **kwargs):
+	def basic_llm_call(self, messages: list, use_cache: bool = True, **kwargs):
 		'''
 		Allows the user to conduct a basic LLM call.
 		Returns a BasicLLMResponse object consisting of:
@@ -96,13 +96,14 @@ class RAGLLMManager:
 		- response: response object from the API
 		'''
 
-		# First check with prompt cache as returning cached responses is free:
-		temperature = kwargs.get('temperature', 0)
-		cached_response = self.prompt_cache.get_cached_response(request=messages, model=self.model, temperature=temperature, call_type='basic')
+		if use_cache:
+			# First check with prompt cache as returning cached responses is free:
+			temperature = kwargs.get('temperature', 0)
+			cached_response = self.prompt_cache.get_cached_response(request=messages, model=self.model, temperature=temperature, call_type='basic')
 
-		if cached_response is not None:
-			self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True, call_type='cache')
-			return cached_response
+			if cached_response is not None:
+				self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True, call_type='cache')
+				return cached_response
 
 		# No cached response, attempt LLM call
 		# Check with budget manager for permission:
@@ -148,7 +149,7 @@ class RAGLLMManager:
 
 			return basic_llm_response
 
-	def rag_llm_call(self, query: str, k: int = 3, verbose: bool = False, **kwargs):
+	def rag_llm_call(self, query: str, k: int = 3, verbose: bool = False, use_cache: bool = True, **kwargs):
 		'''
 		Allows the user to conduct a RAG assisted LLM call.
 		Returns a RAGLLMResponse object consisting of:
@@ -156,13 +157,14 @@ class RAGLLMManager:
 		- response: response object from the API
 		'''
 
-		# First check with prompt cache as returning cached responses is free:
-		rag_request = {'query': query, 'k': k}
-		cached_response = self.prompt_cache.get_cached_response(request=rag_request, model=self.model, temperature=self.rag_temperature, call_type='rag')
+		if use_cache:
+			# First check with prompt cache as returning cached responses is free:
+			rag_request = {'query': query, 'k': k}
+			cached_response = self.prompt_cache.get_cached_response(request=rag_request, model=self.model, temperature=self.rag_temperature, call_type='rag')
 
-		if cached_response is not None:
-			self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True, call_type='cache')
-			return cached_response
+			if cached_response is not None:
+				self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True, call_type='cache')
+				return cached_response
 
 		# Check with budget manager for permission:
 		if self.budget_manager.allow_llm_api_call():
