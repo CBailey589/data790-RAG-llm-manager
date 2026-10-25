@@ -9,6 +9,7 @@ from .llm_client import LLMClient
 from .prompt_cache import PromptCache
 from .rag_document_processor import RAGDocumentProcessor
 from .rag_llm_client import RAGLLMClient
+from .self_rag_llm_client import SelfRAGLLMClient
 
 
 class RAGLLMManager:
@@ -55,6 +56,8 @@ class RAGLLMManager:
 		embeddings_model = embeddings_model or self.default_embeddings_model
 		self.rag_document_processor = RAGDocumentProcessor(embeddings_model)
 		self.rag_llm_client = RAGLLMClient(embedding_model=embeddings_model, model=self.model)
+
+		self.self_rag_llm_client = SelfRAGLLMClient(embedding_model=embeddings_model, model=self.model)
 
 		self.cost_tracker = CostTracker(model=self.model)
 
@@ -202,18 +205,139 @@ class RAGLLMManager:
 					)
 
 			else:
+				response_data = rag_llm_response.response
+
+				if isinstance(response_data, dict):
+					usage = response_data.get('usage', {})
+				else:
+					usage = {}
+
+				prompt_tokens = usage.get('prompt_tokens', 0)
+				completion_tokens = usage.get('completion_tokens', 0)
+				total_tokens = usage.get(
+					'total_tokens',
+					prompt_tokens + completion_tokens
+				)
+
+				api_call_cost = self.cost_tracker.calculate_cost(
+					prompt_tokens=prompt_tokens,
+					completion_tokens=completion_tokens
+				)
+
+				self.budget_manager.record_cost(cost=api_call_cost)
+
 				self.cost_tracker.record_call(
 					response=rag_llm_response,
 					latency_ms=rag_llm_response.latency,
-					prompt_tokens=0,
-					completion_tokens=0,
-					total_tokens=0,
+					prompt_tokens=prompt_tokens,
+					completion_tokens=completion_tokens,
+					total_tokens=total_tokens,
 					cache_hit=False,
-					error=rag_llm_response.response,
+					error=response_data,
 					call_type='rag'
 				)
 
 			return rag_llm_response
+
+	def self_rag_llm_call(self, query: str, k: int = 3, verbose: bool = False, doc_relevance_check = True, use_cache: bool = True, **kwargs):
+		'''
+		Allows the user to conduct a Self-RAG-style assisted LLM call.
+		Returns a RAGLLMResponse object.
+		'''
+		self_rag_request = {'query': query, 'k': k}
+
+		if use_cache:
+			cached_response = self.prompt_cache.get_cached_response(
+				request=self_rag_request,
+				model=self.model,
+				temperature=self.rag_temperature,
+				call_type='self_rag'
+			)
+
+			if cached_response is not None:
+				self.cost_tracker.record_call(
+					response=cached_response,
+					latency_ms=0,
+					prompt_tokens=0,
+					completion_tokens=0,
+					total_tokens=0,
+					cache_hit=True,
+					call_type='cache'
+				)
+				return cached_response
+
+		if not self.budget_manager.allow_llm_api_call():
+			return None
+
+		self_rag_response = self.self_rag_llm_client.call(query=query, k=k, verbose=verbose, doc_relevance_check=doc_relevance_check, **kwargs)
+
+		if self_rag_response.success:
+			usage = self_rag_response.response.get('usage', {})
+			prompt_tokens = usage.get('prompt_tokens', 0)
+			completion_tokens = usage.get('completion_tokens', 0)
+			total_tokens = usage.get('total_tokens', prompt_tokens + completion_tokens)
+
+			api_call_cost = self.cost_tracker.calculate_cost(
+				prompt_tokens=prompt_tokens,
+				completion_tokens=completion_tokens
+			)
+
+			self.budget_manager.record_cost(cost=api_call_cost)
+
+			self.cost_tracker.record_call(
+				response=self_rag_response,
+				latency_ms=self_rag_response.latency,
+				prompt_tokens=prompt_tokens,
+				completion_tokens=completion_tokens,
+				total_tokens=total_tokens,
+				cache_hit=False,
+				call_type='self_rag'
+			)
+
+			if use_cache:
+				self.prompt_cache.set_cached_response(
+					request=self_rag_request,
+					model=self.model,
+					temperature=self.rag_temperature,
+					call_type='self_rag',
+					response=self_rag_response
+				)
+
+		else:
+			response_data = self_rag_response.response
+
+			if isinstance(response_data, dict):
+				usage = response_data.get('usage', {})
+			else:
+				usage = {}
+
+			prompt_tokens = usage.get('prompt_tokens', 0)
+			completion_tokens = usage.get('completion_tokens', 0)
+			total_tokens = usage.get(
+				'total_tokens',
+				prompt_tokens + completion_tokens
+			)
+
+			api_call_cost = self.cost_tracker.calculate_cost(
+				prompt_tokens=prompt_tokens,
+				completion_tokens=completion_tokens
+			)
+
+			self.budget_manager.record_cost(cost=api_call_cost)
+
+			self.cost_tracker.record_call(
+				response=self_rag_response,
+				latency_ms=self_rag_response.latency,
+				prompt_tokens=prompt_tokens,
+				completion_tokens=completion_tokens,
+				total_tokens=total_tokens,
+				cache_hit=False,
+				error=response_data,
+				call_type='self_rag'
+			)
+
+		return self_rag_response
+
 
 	def process_new_documents(self,
 		loader_kwargs: dict = None,

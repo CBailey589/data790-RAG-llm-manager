@@ -195,10 +195,20 @@ class RAGLLMClient:
 
 			if doc_relevance_check and doc_relevance_score < self.context_relevance_threshold:
 				return RAGLLMResponse(
-					success = False,
-					response = "Unable to retrieve relevant context for API call.",
-					latency = (time.time() - call_start_time) * 1000,
-					context_relevance = doc_relevance_score)
+					success=False,
+					response={
+						"error": "Unable to retrieve relevant context for API call.",
+						"usage": {
+							"prompt_tokens": evaluator_prompt_tokens,
+							"completion_tokens": evaluator_completion_tokens,
+							"total_tokens": (
+								evaluator_prompt_tokens + evaluator_completion_tokens
+							)
+						}
+					},
+					latency=(time.time() - call_start_time) * 1000,
+					context_relevance=doc_relevance_score
+				)
 			else:
 				context = "\n\n".join(
 					doc.page_content for doc in relevant_docs
@@ -285,4 +295,18 @@ class RAGLLMClient:
 		except Exception as e:
 			call_end_time = time.time()
 			call_latency = (call_end_time - call_start_time) * 1000
-			return RAGLLMResponse(success=False, response=e, latency=call_latency)
+			return RAGLLMResponse(
+				success=False,
+				response={
+					"error": str(e),
+					"usage": {
+						"prompt_tokens": evaluator_prompt_tokens if 'evaluator_prompt_tokens' in locals() else 0,
+						"completion_tokens": evaluator_completion_tokens if 'evaluator_completion_tokens' in locals() else 0,
+						"total_tokens": (
+							(evaluator_prompt_tokens if 'evaluator_prompt_tokens' in locals() else 0)
+							+ (evaluator_completion_tokens if 'evaluator_completion_tokens' in locals() else 0)
+						)
+					}
+				},
+				latency=call_latency
+			)
