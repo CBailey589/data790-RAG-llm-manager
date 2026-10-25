@@ -1,6 +1,6 @@
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_chroma import Chroma
@@ -18,6 +18,8 @@ class RAGLLMResponse:
 	response: Any
 	latency: float = 0
 	context_relevance: float = 0
+	retrieved_spread_ids: list[str] = field(default_factory=list)
+	retrieval_attempts: int = 0
 
 class DocumentRelevanceGrade(BaseModel):
 	'''
@@ -376,6 +378,7 @@ class SelfRAGLLMClient:
 
 		call_start_time = time.time()
 		usage = self._empty_usage()
+		retrieval_attempts = 0
 
 		try:
 			valid, reason = self.prompt_validator.validate_prompt(query)
@@ -387,11 +390,13 @@ class SelfRAGLLMClient:
 						"error": reason,
 						"usage": usage,
 					},
+					retrieval_attempts=retrieval_attempts
 				)
 
 			relevant_docs_with_scores, relevant_docs, doc_relevance_score = (
 				self._retrieve_and_filter_documents(query=query, k=k, usage=usage)
 			)
+			retrieval_attempts += 1
 
 			if verbose:
 				print(f"Retrieved {len(relevant_docs)} relevant documents.")
@@ -413,6 +418,12 @@ class SelfRAGLLMClient:
 						},
 						latency=(time.time() - call_start_time) * 1000,
 						context_relevance=doc_relevance_score,
+						retrieved_spread_ids=list(dict.fromkeys(
+							str(doc.metadata["id"])
+							for doc, score in relevant_docs_with_scores
+							if doc.metadata.get("id") is not None
+						)),
+						retrieval_attempts = retrieval_attempts
 					)
 
 				if verbose:
@@ -428,6 +439,7 @@ class SelfRAGLLMClient:
 						print(f"Retrying with {2 * k} retrieved documents...")
 
 					relevant_docs_with_scores, relevant_docs, doc_relevance_score = (self._retrieve_and_filter_documents(query=query, k=2 * k, usage=usage))
+					retrieval_attempts += 1
 
 					if verbose:
 						print(f"Retrieved {len(relevant_docs)} relevant documents on retry.")
@@ -454,6 +466,12 @@ class SelfRAGLLMClient:
 							},
 							latency=(time.time() - call_start_time) * 1000,
 							context_relevance=doc_relevance_score,
+							retrieved_spread_ids=list(dict.fromkeys(
+								str(doc.metadata["id"])
+								for doc, score in relevant_docs_with_scores
+								if doc.metadata.get("id") is not None
+							)),
+							retrieval_attempts = retrieval_attempts
 						)
 
 
@@ -476,6 +494,12 @@ class SelfRAGLLMClient:
 							},
 							latency=(time.time() - call_start_time) * 1000,
 							context_relevance=doc_relevance_score,
+							retrieved_spread_ids=list(dict.fromkeys(
+								str(doc.metadata["id"])
+								for doc, score in relevant_docs_with_scores
+								if doc.metadata.get("id") is not None
+							)),
+							retrieval_attempts = retrieval_attempts
 						)
 
 				response = {
@@ -516,7 +540,18 @@ class SelfRAGLLMClient:
 
 					print("=" * 60 + "\n")
 
-				return RAGLLMResponse(success=True, response=response, latency=call_latency, context_relevance=doc_relevance_score)
+				return RAGLLMResponse(
+					success=True,
+					response=response,
+					latency=call_latency,
+					context_relevance=doc_relevance_score,
+					retrieved_spread_ids=list(dict.fromkeys(
+						str(doc.metadata["id"])
+						for doc, score in relevant_docs_with_scores
+						if doc.metadata.get("id") is not None
+					)),
+					retrieval_attempts = retrieval_attempts
+				)
 
 		except Exception as e:
 			call_latency = (time.time() - call_start_time) * 1000
@@ -528,4 +563,5 @@ class SelfRAGLLMClient:
 					"usage": usage,
 				},
 				latency=call_latency,
+				retrieval_attempts=retrieval_attempts
 			)

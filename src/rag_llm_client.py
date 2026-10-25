@@ -1,6 +1,6 @@
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_chroma import Chroma
@@ -18,6 +18,7 @@ class RAGLLMResponse:
 	response: Any
 	latency: float = 0
 	context_relevance: float = 0
+	retrieved_spread_ids: list[str] = field(default_factory=list)
 
 class PIIRedaction(BaseModel):
     '''
@@ -290,7 +291,17 @@ class RAGLLMClient:
 
 					print("=" * 60 + "\n")
 
-				return RAGLLMResponse(success=True, response=response, latency=call_latency, context_relevance=doc_relevance_score)
+				return RAGLLMResponse(
+					success=True,
+					response=response,
+					latency=call_latency,
+					context_relevance=doc_relevance_score,
+					retrieved_spread_ids=list(dict.fromkeys(
+						str(doc.metadata["id"])
+						for doc, score in relevant_docs_with_scores
+						if doc.metadata.get("id") is not None
+					))
+				)
 
 		except Exception as e:
 			call_end_time = time.time()
