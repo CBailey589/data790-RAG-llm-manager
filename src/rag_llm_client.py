@@ -19,6 +19,7 @@ class RAGLLMResponse:
 	latency: float = 0
 	context_relevance: float = 0
 	retrieved_spread_ids: list[str] = field(default_factory=list)
+	retrieval_attempts: int = 1
 
 class PIIRedaction(BaseModel):
     '''
@@ -208,7 +209,8 @@ class RAGLLMClient:
 						}
 					},
 					latency=(time.time() - call_start_time) * 1000,
-					context_relevance=doc_relevance_score
+					context_relevance=doc_relevance_score,
+					retrieval_attempts = 1
 				)
 			else:
 				context = "\n\n".join(
@@ -300,7 +302,8 @@ class RAGLLMClient:
 						str(doc.metadata["id"])
 						for doc, score in relevant_docs_with_scores
 						if doc.metadata.get("id") is not None
-					))
+					)),
+					retrieval_attempts = 1
 				)
 
 		except Exception as e:
@@ -319,5 +322,6 @@ class RAGLLMClient:
 						)
 					}
 				},
-				latency=call_latency
+				latency=call_latency,
+				retrieval_attempts = 1
 			)
