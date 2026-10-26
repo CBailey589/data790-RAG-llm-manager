@@ -90,5 +90,3 @@ See the included notebooks and source code for examples of initialization, docum
 - Answer relevance evaluation with limited retry 
 - PII identification and redacting
 - Security test suite
-
-<img width="1725" height="997" alt="image" src="https://github.com/user-attachments/assets/f66f7c58-bde5-440b-8f49-0180c203618f" />
