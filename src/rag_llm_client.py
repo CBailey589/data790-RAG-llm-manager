@@ -325,3 +325,109 @@ class RAGLLMClient:
 				latency=call_latency,
 				retrieval_attempts = 1
 			)
+
+	def call_unsecured(
+		self,
+		query: str,
+		k: int,
+		verbose: bool = False,
+		doc_relevance_check: bool = False,
+		system_prompt: str = "You are a helpful assistant.",
+	) -> RAGLLMResponse:
+		'''
+		Run RAG without security screening or PII redaction.
+		'''
+
+		call_start_time = time.time()
+		evaluator_prompt_tokens = 0
+		evaluator_completion_tokens = 0
+
+		try:
+			relevant_docs_with_scores = (
+				self.chroma.similarity_search_with_score(query, k=k)
+			)
+			relevant_docs = [doc for doc, score in relevant_docs_with_scores]
+
+			retrieved_docs_str = "\n".join(doc.page_content for doc in relevant_docs)
+
+			doc_relevance_score = 0.0
+
+			if doc_relevance_check:
+				(doc_relevance_score, evaluator_prompt_tokens, evaluator_completion_tokens) = self._evaluate_relevant_documents(query=query, retrieved_docs=retrieved_docs_str)
+
+				if doc_relevance_score < self.context_relevance_threshold:
+					return RAGLLMResponse(
+						success=False,
+						response={
+							"error": "Unable to retrieve relevant context for API call.",
+							"usage": {
+								"prompt_tokens": evaluator_prompt_tokens,
+								"completion_tokens": evaluator_completion_tokens,
+								"total_tokens": (evaluator_prompt_tokens + evaluator_completion_tokens)
+							}
+						},
+						latency=(time.time() - call_start_time) * 1000,
+						context_relevance=doc_relevance_score,
+						retrieved_spread_ids=[str(doc.metadata["id"]) for doc in relevant_docs if doc.metadata.get("id") is not None],
+					)
+
+			context = "\n\n".join(doc.page_content for doc in relevant_docs)
+
+			prompt = ChatPromptTemplate.from_messages([
+				("system", "{system_prompt}\n\nRetrieved context:\n{context}"),
+				("human", "{question}"),
+			])
+
+			messages = prompt.format_messages(system_prompt=system_prompt, context=context, question=query)
+
+			with get_openai_callback() as cb:
+				llm_response = self.client.invoke(messages)
+
+				response = {
+					"result": (llm_response.content if isinstance(llm_response.content, str) else str(llm_response.content)),
+					"usage": {
+						"prompt_tokens": (cb.prompt_tokens + evaluator_prompt_tokens),
+						"completion_tokens": (cb.completion_tokens + evaluator_completion_tokens),
+						"total_tokens": (
+							cb.total_tokens
+							+ evaluator_prompt_tokens
+							+ evaluator_completion_tokens
+						)
+					}
+				}
+
+			if verbose:
+				print("\nRAG RESPONSE (UNSECURED)")
+				print(response["result"])
+
+			return RAGLLMResponse(
+				success=True,
+				response=response,
+				latency=(time.time() - call_start_time) * 1000,
+				context_relevance=doc_relevance_score,
+				retrieved_spread_ids=list(dict.fromkeys(
+					str(doc.metadata["id"])
+					for doc in relevant_docs
+					if doc.metadata.get("id") is not None
+				)),
+				retrieval_attempts=1
+			)
+
+		except Exception as e:
+			return RAGLLMResponse(
+				success=False,
+				response={
+					"error": str(e),
+					"usage": {
+						"prompt_tokens": evaluator_prompt_tokens,
+						"completion_tokens": evaluator_completion_tokens,
+						"total_tokens": (
+							evaluator_prompt_tokens
+							+ evaluator_completion_tokens
+						)
+					}
+				},
+				latency=(time.time() - call_start_time) * 1000,
+				retrieval_attempts=1
+			)
+
