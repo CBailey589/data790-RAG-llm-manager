@@ -221,3 +221,6 @@ __marimo__/
 chromadb/
 *.sqlite3
 *.bin
+
+documents/*
+processed_documents/*
