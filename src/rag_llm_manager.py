@@ -1,26 +1,22 @@
 import os
-from typing import Callable
 
 from dotenv import load_dotenv
 
+load_dotenv()
+
 from .budget_manager import BudgetManager
 from .cost_tracker import CostTracker
-from .llm_client import LLMClient
-from .prompt_cache import PromptCache
-from .rag_document_processor import RAGDocumentProcessor
 from .rag_llm_client import RAGLLMClient
-from .self_rag_llm_client import SelfRAGLLMClient
 
 
 class RAGLLMManager:
 	'''
-	Main Class for managing LLM API interaction. This class provides:
-	- A Basic LLM API client used to make one off calls to a configured model.
-	- A RAG LLM API client used to make RAG assisted calls to a configured model.
-	- A Cost Tracker that tracks API calls of various types and calculated costs associated with them based on pricing information.
-	- A Budget Manager that allows users to set a maximum budget and track their spending against that budget.
-	- A Prompt Cache that will return deterministic results for identical LLM API queries, reducing LLM API costs.
-	- A Document Processor that allows users to upload documents and process them for RAG assisted LLM API calls.
+	Main class for managing RAG LLM interactions. This class provides:
+	- A RAG LLM client for retrieval-augmented generation.
+	- A Cost Tracker for monitoring API usage and associated costs.
+	- A Budget Manager for setting and enforcing API spending limits.
+
+	Assumes an existing, populated ChromaDB collection.
 	'''
 
 	def __init__(
@@ -28,56 +24,68 @@ class RAGLLMManager:
 		model: str = None,
 		embeddings_model: str = None,
 		daily_budget: float = 1.00,
-		enable_budget_hard_cap: bool = True,
-		max_cache_size: int = 100
+		enable_budget_hard_cap: bool = False
 	):
-		'''
-		Initializes RAG LLM Manager and required classes.
-		'''
+
 		load_dotenv()
+		print("MANAGER 1: Environment loaded", flush=True)
 
 		llm_base_url = os.getenv("LLM_BASE_URL")
-		assert llm_base_url, "Missing LLM_BASE_URL — please ensure .env file has the LLM_BASE_URL field populated"
 		llm_api_key = os.getenv("LLM_API_KEY")
-		assert llm_api_key, "Missing LLM_API_KEY — please ensure .env file has the LLM_API_KEY field populated"
 		default_model = os.getenv("DEFAULT_MODEL")
-		assert default_model, "Missing DEFAULT_MODEL — please ensure .env file has the DEFAULT_MODEL field populated"
 		default_embeddings_model = os.getenv("DEFAULT_EMBEDDINGS_MODEL")
-		assert default_embeddings_model, "Missing DEFAULT_EMBEDDINGS_MODEL — please ensure .env file has the DEFAULT_EMBEDDINGS_MODEL field populated"
 
-		self.llm_base_url = llm_base_url
-		self.llm_api_key = llm_api_key
+		assert llm_base_url
+		assert llm_api_key
+		assert default_model
+		assert default_embeddings_model
+
+		print("MANAGER 2: Environment validated", flush=True)
+
 		self.model = model or default_model
-		self.default_embeddings_model = default_embeddings_model
-		self.rag_temperature  = 0
+		self.embeddings_model = embeddings_model or default_embeddings_model
 
-		self.llm_client = LLMClient()
+		print("MANAGER 3: Creating RAGLLMClient", flush=True)
+		self.rag_llm_client = RAGLLMClient(
+			embedding_model=self.embeddings_model,
+			model=self.model
+		)
+		print("MANAGER 4: RAGLLMClient created", flush=True)
 
-		embeddings_model = embeddings_model or self.default_embeddings_model
-		self.rag_document_processor = RAGDocumentProcessor(embeddings_model)
-		self.rag_llm_client = RAGLLMClient(embedding_model=embeddings_model, model=self.model)
-
-		self.self_rag_llm_client = SelfRAGLLMClient(embedding_model=embeddings_model, model=self.model)
-
+		print("MANAGER 5: Creating CostTracker", flush=True)
 		self.cost_tracker = CostTracker(model=self.model)
+		print("MANAGER 6: CostTracker created", flush=True)
 
 		if daily_budget <= 0:
 			raise ValueError("[$$$] DAILY BUDGET MUST BE GREATER THAN ZERO.")
-		self.budget_manager = BudgetManager(daily_budget=daily_budget, enable_budget_hard_cap=enable_budget_hard_cap)
 
-		self.prompt_cache = PromptCache(max_size=max_cache_size)
+		print("MANAGER 7: Creating BudgetManager", flush=True)
+		self.budget_manager = BudgetManager(
+			daily_budget=daily_budget,
+			enable_budget_hard_cap=enable_budget_hard_cap
+		)
+		print("MANAGER 8: BudgetManager created", flush=True)
+		# '''
+		# Initializes RAG LLM Manager.
+		# '''
+		# load_dotenv()
 
-	def set_llm_model(self, model: str, **kwargs):
-		'''
-		Allows the user to change the LLM model (ex: 'gpt-4.1-mini', 'gpt-5.6-sol')
-		'''
-		# Send to Cost Tracker first so we can update Pricing DB if necessary, will raise error if pricing info is unknown
-		self.cost_tracker.update_model(model=model)
-		self.model = model
-		self.rag_temperature = kwargs.get('temperature', 0)
-		self.rag_llm_client.update_llm_model(model=self.model, **kwargs)
+		# llm_base_url = os.getenv("LLM_BASE_URL")
+		# assert llm_base_url, "Missing LLM_BASE_URL — please ensure .env file has the LLM_BASE_URL field populated"
+		# llm_api_key = os.getenv("LLM_API_KEY")
+		# assert llm_api_key, "Missing LLM_API_KEY — please ensure .env file has the LLM_API_KEY field populated"
+		# default_model = os.getenv("DEFAULT_MODEL")
+		# assert default_model, "Missing DEFAULT_MODEL — please ensure .env file has the DEFAULT_MODEL field populated"
+		# default_embeddings_model = os.getenv("DEFAULT_EMBEDDINGS_MODEL")
+		# assert default_embeddings_model, "Missing DEFAULT_EMBEDDINGS_MODEL — please ensure .env file has the DEFAULT_EMBEDDINGS_MODEL field populated"
 
-		print(f"UPDATED LLM MODEL TO: {model}")
+		# self.model = model or default_model
+		# self.embeddings_model = embeddings_model or default_embeddings_model
+		# self.rag_llm_client = RAGLLMClient(embedding_model=self.embeddings_model, model=self.model)
+		# self.cost_tracker = CostTracker(model=self.model)
+		# if daily_budget <= 0:
+		# 	raise ValueError("[$$$] DAILY BUDGET MUST BE GREATER THAN ZERO.")
+		# self.budget_manager = BudgetManager(daily_budget=daily_budget, enable_budget_hard_cap=enable_budget_hard_cap)
 
 	def insert_model_into_pricing_db(self, model_name: str, input_cost: int, output_cost: int, provider: str):
 		'''
@@ -90,274 +98,6 @@ class RAGLLMManager:
 			provider: str (ex: 'OpenAI/Azure')
 		'''
 		self.cost_tracker.insert_model_into_pricing_db(model_name=model_name, input_cost=input_cost, output_cost=output_cost, provider=provider)
-
-	def basic_llm_call(self, messages: list, use_cache: bool = True, **kwargs):
-		'''
-		Allows the user to conduct a basic LLM call.
-		Returns a BasicLLMResponse object consisting of:
-		- success: boolean
-		- response: response object from the API
-		'''
-
-		if use_cache:
-			# First check with prompt cache as returning cached responses is free:
-			temperature = kwargs.get('temperature', 0)
-			cached_response = self.prompt_cache.get_cached_response(request=messages, model=self.model, temperature=temperature, call_type='basic')
-
-			if cached_response is not None:
-				self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True, call_type='cache')
-				return cached_response
-
-		# No cached response, attempt LLM call
-		# Check with budget manager for permission:
-		if self.budget_manager.allow_llm_api_call():
-			basic_llm_response = self.llm_client.call(messages=messages, model=self.model, **kwargs)
-
-			if basic_llm_response.success:
-				# calculate cost / update budget info:
-				prompt_tokens = basic_llm_response.response.usage.prompt_tokens
-				completion_tokens = basic_llm_response.response.usage.completion_tokens
-				total_tokens = basic_llm_response.response.usage.total_tokens
-				api_call_cost = self.cost_tracker.calculate_cost(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
-
-				self.budget_manager.record_cost(cost=api_call_cost)
-				self.cost_tracker.record_call(
-					response=basic_llm_response,
-					latency_ms=basic_llm_response.latency,
-					prompt_tokens=prompt_tokens,
-					completion_tokens=completion_tokens,
-					total_tokens=total_tokens,
-					cache_hit=False,
-					call_type='basic'
-				)
-
-				if use_cache:
-					self.prompt_cache.set_cached_response(
-						request=messages,
-						model=self.model,
-						temperature=temperature,
-						call_type='basic',
-						response=basic_llm_response
-					)
-
-			else:
-				self.cost_tracker.record_call(
-					response=basic_llm_response,
-					latency_ms=basic_llm_response.latency,
-					prompt_tokens=0,
-					completion_tokens=0,
-					total_tokens=0,
-					cache_hit=False,
-					error=basic_llm_response.response,
-					call_type='basic'
-				)
-
-			return basic_llm_response
-
-	def rag_llm_call(self, query: str, k: int = 3, verbose: bool = False, use_cache: bool = True, **kwargs):
-		'''
-		Allows the user to conduct a RAG assisted LLM call.
-		Returns a RAGLLMResponse object consisting of:
-		- success: boolean
-		- response: response object from the API
-		'''
-
-		rag_request = {'query': query, 'k': k}
-
-		if use_cache:
-			# First check with prompt cache as returning cached responses is free:
-			cached_response = self.prompt_cache.get_cached_response(request=rag_request, model=self.model, temperature=self.rag_temperature, call_type='rag')
-
-			if cached_response is not None:
-				self.cost_tracker.record_call(response=cached_response, latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, cache_hit=True, call_type='cache')
-				return cached_response
-
-		# Check with budget manager for permission:
-		if self.budget_manager.allow_llm_api_call():
-			rag_llm_response = self.rag_llm_client.call(query=query, k=k, verbose=verbose, **kwargs)
-
-			if rag_llm_response.success:
-				# calculate cost / update budget info:
-				prompt_tokens = rag_llm_response.response['usage']['prompt_tokens']
-				completion_tokens = rag_llm_response.response['usage']['completion_tokens']
-				total_tokens = rag_llm_response.response['usage']['total_tokens']
-				api_call_cost = self.cost_tracker.calculate_cost(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
-
-
-				self.budget_manager.record_cost(cost=api_call_cost)
-				self.cost_tracker.record_call(
-					response=rag_llm_response,
-					latency_ms=rag_llm_response.latency,
-					prompt_tokens=prompt_tokens,
-					completion_tokens=completion_tokens,
-					total_tokens=total_tokens,
-					cache_hit=False,
-					call_type='rag'
-				)
-
-				if use_cache:
-					self.prompt_cache.set_cached_response(
-						request=rag_request,
-						model=self.model,
-						temperature=self.rag_temperature,
-						call_type='rag',
-						response=rag_llm_response
-					)
-
-			else:
-				response_data = rag_llm_response.response
-
-				if isinstance(response_data, dict):
-					usage = response_data.get('usage', {})
-				else:
-					usage = {}
-
-				prompt_tokens = usage.get('prompt_tokens', 0)
-				completion_tokens = usage.get('completion_tokens', 0)
-				total_tokens = usage.get(
-					'total_tokens',
-					prompt_tokens + completion_tokens
-				)
-
-				api_call_cost = self.cost_tracker.calculate_cost(
-					prompt_tokens=prompt_tokens,
-					completion_tokens=completion_tokens
-				)
-
-				self.budget_manager.record_cost(cost=api_call_cost)
-
-				self.cost_tracker.record_call(
-					response=rag_llm_response,
-					latency_ms=rag_llm_response.latency,
-					prompt_tokens=prompt_tokens,
-					completion_tokens=completion_tokens,
-					total_tokens=total_tokens,
-					cache_hit=False,
-					error=response_data,
-					call_type='rag'
-				)
-
-			return rag_llm_response
-
-	def self_rag_llm_call(self, query: str, k: int = 3, verbose: bool = False, doc_relevance_check = True, use_cache: bool = True, **kwargs):
-		'''
-		Allows the user to conduct a Self-RAG-style assisted LLM call.
-		Returns a RAGLLMResponse object.
-		'''
-		self_rag_request = {'query': query, 'k': k}
-
-		if use_cache:
-			cached_response = self.prompt_cache.get_cached_response(
-				request=self_rag_request,
-				model=self.model,
-				temperature=self.rag_temperature,
-				call_type='self_rag'
-			)
-
-			if cached_response is not None:
-				self.cost_tracker.record_call(
-					response=cached_response,
-					latency_ms=0,
-					prompt_tokens=0,
-					completion_tokens=0,
-					total_tokens=0,
-					cache_hit=True,
-					call_type='cache'
-				)
-				return cached_response
-
-		if not self.budget_manager.allow_llm_api_call():
-			return None
-
-		self_rag_response = self.self_rag_llm_client.call(query=query, k=k, verbose=verbose, doc_relevance_check=doc_relevance_check, **kwargs)
-
-		if self_rag_response.success:
-			usage = self_rag_response.response.get('usage', {})
-			prompt_tokens = usage.get('prompt_tokens', 0)
-			completion_tokens = usage.get('completion_tokens', 0)
-			total_tokens = usage.get('total_tokens', prompt_tokens + completion_tokens)
-
-			api_call_cost = self.cost_tracker.calculate_cost(
-				prompt_tokens=prompt_tokens,
-				completion_tokens=completion_tokens
-			)
-
-			self.budget_manager.record_cost(cost=api_call_cost)
-
-			self.cost_tracker.record_call(
-				response=self_rag_response,
-				latency_ms=self_rag_response.latency,
-				prompt_tokens=prompt_tokens,
-				completion_tokens=completion_tokens,
-				total_tokens=total_tokens,
-				cache_hit=False,
-				call_type='self_rag'
-			)
-
-			if use_cache:
-				self.prompt_cache.set_cached_response(
-					request=self_rag_request,
-					model=self.model,
-					temperature=self.rag_temperature,
-					call_type='self_rag',
-					response=self_rag_response
-				)
-
-		else:
-			response_data = self_rag_response.response
-
-			if isinstance(response_data, dict):
-				usage = response_data.get('usage', {})
-			else:
-				usage = {}
-
-			prompt_tokens = usage.get('prompt_tokens', 0)
-			completion_tokens = usage.get('completion_tokens', 0)
-			total_tokens = usage.get(
-				'total_tokens',
-				prompt_tokens + completion_tokens
-			)
-
-			api_call_cost = self.cost_tracker.calculate_cost(
-				prompt_tokens=prompt_tokens,
-				completion_tokens=completion_tokens
-			)
-
-			self.budget_manager.record_cost(cost=api_call_cost)
-
-			self.cost_tracker.record_call(
-				response=self_rag_response,
-				latency_ms=self_rag_response.latency,
-				prompt_tokens=prompt_tokens,
-				completion_tokens=completion_tokens,
-				total_tokens=total_tokens,
-				cache_hit=False,
-				error=response_data,
-				call_type='self_rag'
-			)
-
-		return self_rag_response
-
-
-	def process_new_documents(self,
-		loader_kwargs: dict = None,
-		splitter_chunk_size: int = None,
-		splitter_chunk_overlap: int = None,
-		splitter_chunk_len_function: Callable = len,
-		separators: list = None,
-		splitter_kwargs: dict = None
-	):
-		'''
-		Allows the user to trigger processing of new .PDF documents for RAG assisted LLM calls.
-		'''
-		self.rag_document_processor.process_new_documents(
-			loader_kwargs=loader_kwargs or {},
-			splitter_chunk_size=splitter_chunk_size,
-			splitter_chunk_overlap=splitter_chunk_overlap,
-			splitter_chunk_len_function=splitter_chunk_len_function,
-			separators=separators,
-			splitter_kwargs=splitter_kwargs or {}
-		)
 
 	def enable_budget_hard_cap(self):
 		'''
