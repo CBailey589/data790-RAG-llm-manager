@@ -58,6 +58,11 @@ Configure access to the LLM and embedding models used by the project.
 
 Ensure the corpus and persistent ChromaDB data are available before running retrieval experiments.
 
+To build the corpus, download the HOCR .zip file from: https://archive.org/details/nintendo-power-magazines/Nintendo%20Power%20Issue%20001/page/61/mode/2up
+and place it in your cloned directory. Unzip the files into a directory named documents/
+
+Follow the np_corpus_prep notebook to locally build your required corpus.
+
 ## Usage
 
 Create an instance of the RAG client:
@@ -107,7 +112,7 @@ client.call(
 This project uses OCR-derived text from digitized issues of *Nintendo Power*, originally published by Nintendo of America.
 
 **Digitized source:**
-- Internet Archive: [https://archive.org/details/Nintendo_Power_Issue001-Issue127](https://archive.org/details/nintendo-power-magazines/Nintendo%20Power%20Issue%20001/)
+- Internet Archive: https://archive.org/details/nintendo-power-magazines/Nintendo%20Power%20Issue%20001/page/61/mode/2up
 - Accessed: October 2026
 
 **Processing and use:**
