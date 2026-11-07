@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project implements a lightweight RAG system for the LLM API calls. The system provides both standard LLM calls and RAG-assisted calls using a local Chroma vector store. It also includes document processing, LLM-based context relevance evaluation, prompt caching, cost tracking, and budget management.
+This project provides a lightweight RAG system that can be used to search against the full 285 issue run of Nintendo Power magazine.
 
 The Milestone 2 implementation uses a 285 issue Nintendo Power magazine corpus to answer questions about historical Nintendo Power content. It adds security checks for user prompts and retrieved documents, attempts to identify and redact personally identifiable information (PII), and evaluates generated answers for relevance and adequacy.
 
@@ -21,34 +21,26 @@ Security checks are applied to user prompts and retrieved documents before respo
 
 src/
 - rag_llm_manager.py
-- llm_client.py
 - rag_llm_client.py
-- self_rag_llm_client.py
 - rag_document_processor.py
 - llm_prompt_validator.py
 - prompt_cache.py
 - cost_tracker.py
 - budget_manager.py
 
-documents/             # Unprocessed documents are placed here
+chromadb_db_nintendo_power/              # Persistent Chroma vector store containing embeddings of Nintendo Power 
 
-processed_documents/   # Dcouments are moved here automatically after processing
-
-chromadb/              # Persistent Chroma vector store
-
-Milestone_1_demo.ipynb # A demonstration of the class and it's capabilities
-Milestone_2_evaluation.ipynb # A demonstration of the improvements made for Milestone 2
-np_corpus_prep.ipynb # A walkthrough of Nintendo Power corpus generation
+Milestone_2_retry.ipynb # A demonstration of the security features of the system
 
 ## Corpus
 
 The Milestone 2 corpus consists of Nintendo Power magazine content processed into two-page spreads. Each spread is stored as a separate document for retrieval.
 
-The vector store contains 17,304 documents:
+The vector store contains 17,309 documents:
 
 17,303 Nintendo Power spreads
 
-1 synthetic security-test document used to evaluate handling of malicious retrieved content
+6 synthetic security-test documents used to evaluate handling of malicious retrieved content
 
 The project uses the text-embedding-3-large embedding model to generate document embeddings for ChromaDB.
 
@@ -60,7 +52,7 @@ Create a Python virtual environment (recommend Python 3.12).
 
 Install the project dependencies using pyproject.toml.
 
-Create a .env file using .env.example and configure the required LLM API settings.
+Create a .env file using .env.example and configure the required LLM API settings. Utilize text-embedding-3-large for text embedding.
 
 Configure access to the LLM and embedding models used by the project.
 
@@ -68,21 +60,40 @@ Ensure the corpus and persistent ChromaDB data are available before running retr
 
 ## Usage
 
-Create an instance of the RAGLLMManager class.
+Create an instance of the RAG client:
+```
+import os
+from dotenv import load_dotenv
+from src.rag_llm_client import RAGLLMClient
 
-See the included notebooks and source code for examples of initialization, document processing, querying, and evaluation.
-- Specifically Milestone_2_Evaluation.py, specifically the 2 final cells of the ```Define evaluation framework``` section.
+load_dotenv()
 
-#### Recommended test prompts:
-- In the original Pikmin how much time do you have to escape the planet? And what is the difference between the Red, Yellow, and Blue Pikmin?
+client = RAGLLMClient(
+    embedding_model=os.getenv("DEFAULT_EMBEDDINGS_MODEL"),
+    model=os.getenv("DEFAULT_MODEL")
+)
+```
 
-- What tips does Nintendo Power provide for playing Super Bowser: Bowser's Conquest on Game Boy, including the encounter with Mario?
+Ensure the chromadb has all intended documents:
+```
+# expecting 17,309: 17,303 legitimate + 6 security test document:
+print("Stored embeddings:", client.collection.count())
+print("Collection:", client.collection.name)
+```
+
+Make a call against the Nintendo Power corpus:
+```
+client.call(
+    query='What are some techniques that can help me in Terranigma?',
+    k=3,
+    self_rag=True,
+    security_enabled=True,
+    verbose=True
+)
+```
 
 ## Features
 
-- Document ingestion and chunking
-- Embedding generation and Chroma vector storage
-- Standard LLM calls
 - RAG-assisted LLM calls with LLM-based context relevance evaluation
 - Basic and Self-RAG approaches
 - Prompt validation and LLM based security screening
@@ -90,3 +101,19 @@ See the included notebooks and source code for examples of initialization, docum
 - Answer relevance evaluation with limited retry 
 - PII identification and redacting
 - Security test suite
+
+## Dataset Attribution
+
+This project uses OCR-derived text from digitized issues of *Nintendo Power*, originally published by Nintendo of America.
+
+**Digitized source:**
+- Internet Archive: [https://archive.org/details/Nintendo_Power_Issue001-Issue127](https://archive.org/details/nintendo-power-magazines/Nintendo%20Power%20Issue%20001/)
+- Accessed: October 2026
+
+**Processing and use:**
+
+The original digitized magazine pages were processed into OCR-derived text, converted into structured documents, and divided into page-based chunks for retrieval and evaluation in the RAG system.
+
+Each processed document retains source metadata, including issue identifiers and page references, to support source attribution and traceability.
+
+This project is an academic demonstration of retrieval-augmented generation.
