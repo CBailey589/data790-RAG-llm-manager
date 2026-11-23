@@ -1,3 +1,4 @@
+import logging
 import os
 from functools import lru_cache
 
@@ -40,6 +41,8 @@ def chat(request: ChatRequest):
 		)
 
 		if not result.success:
+			logging.error("RAG request failed: %s", result.response)
+
 			if result.security_blocked:
 				raise HTTPException(
 					status_code=403,
