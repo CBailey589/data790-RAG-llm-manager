@@ -22,7 +22,8 @@ dependencies = [
 	"protobuf==3.20.3",
 	"blinker==1.5",
 	"fastapi",
-	"uvicorn"
+	"uvicorn",
+	"mlflow==3.18.0"
 ]
 
 [tool.setuptools.packages.find]
