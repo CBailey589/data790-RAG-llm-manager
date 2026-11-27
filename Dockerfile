@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir .
 
 # Copy code
 COPY main.py ./
+COPY static/ ./static/
 
 # Copy corpus
 COPY chroma_db_nintendo_power/ ./chroma_db_nintendo_power/

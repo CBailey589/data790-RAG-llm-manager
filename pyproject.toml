@@ -23,7 +23,8 @@ dependencies = [
 	"blinker==1.5",
 	"fastapi",
 	"uvicorn",
-	"mlflow==3.18.0"
+	"mlflow==3.18.0",
+	"tiktoken>=0.7"
 ]
 
 [tool.setuptools.packages.find]
