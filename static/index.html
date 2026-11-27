@@ -89,6 +89,9 @@
 
 				const data = await response.json();
 
+				answerMessage.replaceChildren();
+				answerMessage.removeAttribute("role");
+
 				const answer = document.createElement("p");
 				answer.textContent = data.response.result;
 				answer.style.whiteSpace = "pre-wrap";
@@ -123,6 +126,8 @@
 					answerMessage.appendChild(list);
 				}
 			} catch (error) {
+				answerMessage.replaceChildren();
+    			answerMessage.removeAttribute("role");
 				answerMessage.textContent = `Error: ${error.message}`;
 			} finally {
 				sendButton.disabled = false;
