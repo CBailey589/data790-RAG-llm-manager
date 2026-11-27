@@ -1,10 +1,11 @@
 import logging
 import os
+import secrets
 from functools import lru_cache
 
 import mlflow
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from src.rag_llm_client import RAGLLMClient
@@ -12,8 +13,9 @@ from src.rag_llm_client import RAGLLMClient
 load_dotenv()
 tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
 if tracking_uri:
-    mlflow.set_tracking_uri(tracking_uri)
-    mlflow.set_experiment("nintendo-power-rag")
+	mlflow.set_tracking_uri(tracking_uri)
+	mlflow.set_experiment("nintendo-power-rag")
+	mlflow.langchain.autolog()
 app = FastAPI(title="Nintendo Power RAG API")
 
 class ChatRequest(BaseModel):
@@ -34,12 +36,27 @@ def health():
 
 
 @app.post("/chat")
-def chat(request: ChatRequest):
+def chat(request: ChatRequest,
+	x_eval_suite: str | None = Header(default=None),
+	x_eval_key: str | None = Header(default=None),
+	x_eval_test_id: str | None = Header(default=None)
+):
 	try:
+		suite = "interactive"
+		test_id = None
+		expected_key = os.getenv("EVALUATION_API_KEY")
+
+		if (x_eval_suite and expected_key and x_eval_key and secrets.compare_digest(x_eval_key, expected_key)):
+			suite = x_eval_suite
+			test_id = x_eval_test_id
+
 		client = get_rag_client()
 
-
 		with mlflow.start_span(name="Nintendo Power RAG Request") as span:
+			tags = {"test_suite": suite}
+			if test_id:
+				tags["test_id"] = test_id
+			mlflow.update_current_trace(tags=tags)
 			span.set_attribute("retrieval_k", 3)
 			span.set_attribute("self_rag_enabled", True)
 			span.set_attribute("security_enabled", True)
