@@ -225,3 +225,4 @@ chromadb/
 documents/*
 processed_documents/*
 .vscode
+mlruns/

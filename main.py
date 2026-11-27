@@ -3,11 +3,13 @@ import os
 import re
 import secrets
 from functools import lru_cache
+from pathlib import Path
 from urllib.parse import quote
 
 import mlflow
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from src.rag_llm_client import RAGLLMClient
@@ -34,6 +36,10 @@ def get_rag_client() -> RAGLLMClient:
 @app.get("/health")
 def health():
 	return {"status": "running"}
+
+@app.get("/")
+def home():
+	return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 @app.post("/chat")
 def chat(request: ChatRequest,

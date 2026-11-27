@@ -1,0 +1,135 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nintendo Power RAG</title>
+	<style>
+		.spinner {
+			display: inline-block;
+			width: 16px;
+			height: 16px;
+			border: 3px solid #ddd;
+			border-top-color: #333;
+			border-radius: 50%;
+			animation: spin 0.8s linear infinite;
+			vertical-align: middle;
+			margin-right: 8px;
+		}
+
+		@keyframes spin {
+			to {
+				transform: rotate(360deg);
+			}
+		}
+	</style>
+</head>
+<body>
+    <h1>Nintendo Power RAG</h1>
+    <p>Ask a question to get a response using information from Nintendo Power Magazine.</p>
+
+    <div id="messages"></div>
+	<form id="chat-form">
+		<textarea
+			id="question"
+			placeholder="Ask a question to Nintendo Power..."
+			rows="5"
+			style="width: 600px; max-width: 90%; resize: vertical;"
+			required
+		></textarea>
+        <button type="submit">Send</button>
+    </form>
+
+	<script>
+		const form = document.getElementById("chat-form");
+		const questionInput = document.getElementById("question");
+		const messages = document.getElementById("messages");
+		const sendButton = form.querySelector('button[type="submit"]');
+
+		form.addEventListener("submit", async (event) => {
+			event.preventDefault();
+
+			const question = questionInput.value.trim();
+			if (!question) return;
+
+			const userMessage = document.createElement("p");
+			userMessage.textContent = `You: ${question}`;
+			messages.appendChild(userMessage);
+
+			questionInput.value = "";
+			sendButton.disabled = true;
+			sendButton.textContent = "Thinking...";
+
+			const answerMessage = document.createElement("div");
+			answerMessage.setAttribute("role", "status");
+
+			const spinner = document.createElement("span");
+			spinner.className = "spinner";
+
+			const loadingText = document.createElement("span");
+			loadingText.textContent = "Searching Nintendo Power...";
+
+			answerMessage.appendChild(spinner);
+			answerMessage.appendChild(loadingText);
+			messages.appendChild(answerMessage);
+
+			try {
+				const response = await fetch("/chat", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({ message: question })
+				});
+
+				if (!response.ok) {
+					throw new Error(`Request failed: HTTP ${response.status}`);
+				}
+
+				const data = await response.json();
+
+				const answer = document.createElement("p");
+				answer.textContent = data.response.result;
+				answer.style.whiteSpace = "pre-wrap";
+				answerMessage.appendChild(answer);
+
+				if (data.sources?.length) {
+					const heading = document.createElement("p");
+					heading.textContent = "Sources:";
+					answerMessage.appendChild(heading);
+
+					const list = document.createElement("ul");
+
+					for (const source of data.sources) {
+						const item = document.createElement("li");
+
+						if (source.url) {
+							const link = document.createElement("a");
+							link.href = source.url;
+							link.target = "_blank";
+							link.rel = "noopener noreferrer";
+							link.textContent =
+								`Nintendo Power Issue ${source.issue}, ` +
+								`pages ${source.start_page}-${source.end_page}`;
+							item.appendChild(link);
+						} else {
+							item.textContent = source.document_id;
+						}
+
+						list.appendChild(item);
+					}
+
+					answerMessage.appendChild(list);
+				}
+			} catch (error) {
+				answerMessage.textContent = `Error: ${error.message}`;
+			} finally {
+				sendButton.disabled = false;
+				sendButton.textContent = "Send";
+				questionInput.focus();
+			}
+		});
+	</script>
+</body>
+</html>
