@@ -1,7 +1,9 @@
 import logging
 import os
+import re
 import secrets
 from functools import lru_cache
+from urllib.parse import quote
 
 import mlflow
 from dotenv import load_dotenv
@@ -29,11 +31,9 @@ def get_rag_client() -> RAGLLMClient:
 		model=os.environ["DEFAULT_MODEL"],
 	)
 
-
 @app.get("/health")
 def health():
 	return {"status": "running"}
-
 
 @app.post("/chat")
 def chat(request: ChatRequest,
@@ -95,6 +95,10 @@ def chat(request: ChatRequest,
 			"response": result.response,
 			"latency_ms": result.latency,
 			"retrieved_spread_ids": result.retrieved_spread_ids,
+			"sources": [
+				build_archive_url(document_id)
+				for document_id in result.retrieved_spread_ids
+			]
 		}
 
 	except HTTPException:
@@ -106,3 +110,23 @@ def chat(request: ChatRequest,
 			detail="Unable to process RAG request.",
 		) from None
 
+def build_archive_url(document_id: str) -> dict:
+	match = re.fullmatch(r"issue_(\d+)_pages_(\d+)_(\d+)", document_id)
+
+	if not match:
+		return {"document_id": document_id, "url": None}
+
+	issue, start_page, end_page = map(int, match.groups())
+
+	issue_name = quote(f"Nintendo Power Issue {issue:03d}")
+
+	return {
+		"document_id": document_id,
+		"issue": issue,
+		"start_page": start_page,
+		"end_page": end_page,
+		"url": (
+			"https://archive.org/details/nintendo-power-magazines/"
+			f"{issue_name}/page/{start_page}/mode/2up"
+		),
+	}
