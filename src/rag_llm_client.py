@@ -3,6 +3,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+import mlflow
+import tiktoken
 from langchain_community.callbacks.manager import get_openai_callback
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
@@ -40,16 +42,16 @@ class RAGLLMResponse:
 	security_blocked: bool = False
 
 class SecurityError(Exception):
-    '''
+	'''
 	Helper error class for auto grading expected security failures.
 	'''
 
 class RAGStructuredResponse(BaseModel):
-    '''
+	'''
 	Structured response returned by the RAG answer generator.
 	'''
 
-    answer: str = Field(description="Answer to the user's Nintendo Power related question")
+	answer: str = Field(description="Answer to the user's Nintendo Power related question")
 
 class DocumentRelevanceGrade(BaseModel):
 	'''
@@ -128,35 +130,55 @@ class RAGLLMClient:
 		for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
 			total[key] += new.get(key, 0)
 
-	def _retrieve_documents(
-		self,
-		query: str,
-		k: int
-	) -> list:
 
-		query_embedding = self.embeddings.embed_query(query)
-		results = self.collection.query(
-			query_embeddings=[query_embedding],
-			n_results=k,
-			include=["documents", "metadatas", "distances"]
-		)
+	def _retrieve_documents(self, query: str, k: int) -> list:
+		with mlflow.start_span(name="Query Embedding", span_type="EMBEDDING") as span:
+			span.set_attribute("mlflow.llm.model", self.embeddings.model)
+			span.set_attribute("mlflow.llm.provider", "openai")
 
-		retrieved_docs_with_scores = [
-			(
-				Document(page_content=document, metadata=metadata),
-				distance
+			query_embedding = self.embeddings.embed_query(query)
+
+			tokenizer = tiktoken.encoding_for_model(self.embeddings.model)
+			token_count = len(tokenizer.encode(query))
+
+			span.set_attribute("dimensions", len(query_embedding))
+			span.set_attribute("token_count_estimated", True)
+			span.set_attribute(
+				"mlflow.chat.tokenUsage",
+				{
+					"input_tokens": token_count,
+					"output_tokens": 0,
+					"total_tokens": token_count,
+				},
 			)
-			for document, metadata, distance in zip(
-				results["documents"][0],
-				results["metadatas"][0],
-				results["distances"][0]
+
+		with mlflow.start_span(name="ChromaDB Retrieval", span_type="RETRIEVER") as span:
+			span.set_attribute("collection", self.collection.name)
+			span.set_attribute("requested_documents", k)
+			results = self.collection.query(
+				query_embeddings=[query_embedding],
+				n_results=k,
+				include=["documents", "metadatas", "distances"],
 			)
-		]
+
+			retrieved_docs_with_scores = [
+				(Document(page_content=document, metadata=metadata), distance)
+				for document, metadata, distance in zip(
+					results["documents"][0],
+					results["metadatas"][0],
+					results["distances"][0],
+				)
+			]
+
+			span.set_attribute("retrieved_document_count", len(retrieved_docs_with_scores))
+			span.set_attribute("retrieved_document_ids", [doc.metadata.get("id") for doc, _ in retrieved_docs_with_scores])
+			span.set_attribute("distances", [float(distance) for _, distance in retrieved_docs_with_scores])
 
 		if not retrieved_docs_with_scores:
 			raise RuntimeError("No documents available to answer the question.")
 
 		return retrieved_docs_with_scores
+
 
 	def _filter_relevant_documents(self, query: str, documents: list, usage: dict) -> tuple[list, list]:
 		'''
